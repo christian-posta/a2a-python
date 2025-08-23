@@ -1,0 +1,562 @@
+"""
+Market Analysis Agent Executor
+
+This module implements the core execution logic for the Market Analysis Agent,
+handling delegation requests and orchestrating market analysis workflows.
+"""
+
+import json
+import logging
+from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.utils import new_agent_text_message
+
+from business_policies import (
+    market_analysis_policies,
+    InventoryItem,
+    MarketTrend,
+    DemandPattern
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class MarketAnalysisAgent:
+    """Market Analysis Agent that provides laptop demand forecasting and inventory optimization."""
+
+    def __init__(self):
+        self.policies = market_analysis_policies
+        self.analysis_history = []
+
+    async def invoke(self, request_text: str = "") -> str:
+        """Main entry point for market analysis requests."""
+        if not request_text:
+            request_text = "analyze laptop demand and inventory"
+        
+        # Parse the request and determine analysis type
+        delegation_request = self._parse_request(request_text)
+        
+        # Execute the analysis using the core logic
+        core = MarketAnalysisAgentCore()
+        result = core.execute_delegation(delegation_request)
+        
+        # Format the response for display
+        return self._format_response(result)
+
+    def _parse_request(self, request_text: str) -> Dict[str, Any]:
+        """Parse the request text and create a delegation request."""
+        request_lower = request_text.lower()
+        
+        # Default request
+        delegation_request = {
+            "type": "analyze_laptop_demand",
+            "timeframe_months": 6,
+            "departments": ["engineering", "sales", "marketing", "operations"]
+        }
+        
+        # Determine request type based on keywords
+        if "forecast" in request_lower and "trend" in request_lower:
+            delegation_request["type"] = "forecast_market_trends"
+        elif "model" in request_lower and "demand" in request_lower:
+            delegation_request["type"] = "model_demand_patterns"
+        elif "comprehensive" in request_lower:
+            delegation_request["type"] = "comprehensive_market_analysis"
+        
+        # Extract timeframe if mentioned
+        if "quarter" in request_lower or "3 month" in request_lower:
+            delegation_request["timeframe_months"] = 3
+        elif "year" in request_lower or "12 month" in request_lower:
+            delegation_request["timeframe_months"] = 12
+        
+        return delegation_request
+
+    def _format_response(self, result: Dict[str, Any]) -> str:
+        """Format the analysis result into a readable response."""
+        analysis_type = result.get('analysis_type', 'unknown')
+        timeframe = result.get('timeframe_months', 0)
+        
+        response = f"""# Market Analysis Report
+
+## Analysis Overview
+- **Type**: {analysis_type.replace('_', ' ').title()}
+- **Timeframe**: {timeframe} months
+- **Departments**: {', '.join(result.get('departments_analyzed', []))}
+- **Generated**: {result.get('timestamp', 'unknown')}
+
+"""
+        
+        # Add summary if available
+        if 'summary' in result:
+            response += f"""## Executive Summary
+{result['summary']}
+
+"""
+        
+        # Add inventory analysis
+        if 'inventory_analysis' in result:
+            inventory = result['inventory_analysis']
+            response += f"""## Inventory Analysis
+- **Risk Assessment**: {inventory.get('risk_assessment', 'unknown').title()}
+- **Inventory Gaps**: {len(inventory.get('inventory_gaps', []))}
+- **Inventory Surplus**: {len(inventory.get('inventory_surplus', []))}
+
+"""
+            
+            # Show gaps
+            gaps = inventory.get('inventory_gaps', [])
+            if gaps:
+                response += "### Inventory Gaps:\n"
+                for gap in gaps:
+                    response += f"- **{gap['model']}**: Need {gap['gap']} units (Priority: {gap['priority']})\n"
+                response += "\n"
+        
+        # Add recommendations
+        if 'recommendations' in result:
+            recs = result['recommendations']
+            response += "## Recommendations\n\n"
+            
+            immediate = recs.get('immediate_actions', [])
+            if immediate:
+                response += "### Immediate Actions:\n"
+                for action in immediate:
+                    response += f"- {action['action']} (Priority: {action['priority']})\n"
+                response += "\n"
+            
+            short_term = recs.get('short_term_planning', [])
+            if short_term:
+                response += "### Short-term Planning:\n"
+                for action in short_term:
+                    response += f"- {action['action']} (Timeline: {action['timeline']})\n"
+                response += "\n"
+            
+            if recs.get('total_estimated_cost', 0) > 0:
+                response += f"**Total Estimated Cost**: ${recs['total_estimated_cost']:,.2f}\n\n"
+        
+        # Add market trends if available
+        if 'market_trends' in result:
+            trends = result['market_trends']
+            if isinstance(trends, dict) and 'market_trends' in trends:
+                trend_list = trends['market_trends']
+                if trend_list:
+                    response += "## Market Trends\n"
+                    for trend in trend_list[:3]:  # Show top 3 trends
+                        response += f"- **{trend['category']}**: {trend['trend_direction']} ({trend['impact_level']} impact)\n"
+                    response += "\n"
+        
+        response += """## Next Steps
+This analysis provides comprehensive market insights for laptop procurement decisions. 
+Consider integrating with procurement systems for automated order processing.
+
+*Generated by Market Analysis Agent v1.0*"""
+        
+        return response
+
+
+class MarketAnalysisAgentExecutor(AgentExecutor):
+    """Market Analysis Agent Executor for A2A integration."""
+
+    def __init__(self):
+        self.agent = MarketAnalysisAgent()
+
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        # Extract request text from context if available
+        request_text = ""
+        if hasattr(context, 'request') and context.request:
+            if hasattr(context.request, 'text'):
+                request_text = context.request.text
+            elif hasattr(context.request, 'content'):
+                # Handle different content formats
+                content = context.request.content
+                if isinstance(content, str):
+                    request_text = content
+                elif isinstance(content, dict) and 'content' in content:
+                    request_text = content['content']
+        
+        result = await self.agent.invoke(request_text)
+        await event_queue.enqueue_event(new_agent_text_message(result))
+
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> None:
+        raise Exception('cancel not supported')
+
+
+class MarketAnalysisAgentCore:
+    """
+    Core market analysis logic (used by the main agent).
+    
+    This class contains the actual analysis algorithms and MCP integration.
+    """
+    
+    def __init__(self):
+        self.policies = market_analysis_policies
+        self.analysis_history = []
+        
+    def execute_delegation(self, delegation_request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a market analysis delegation request.
+        
+        Args:
+            delegation_request: The delegation request containing analysis parameters
+            
+        Returns:
+            Comprehensive market analysis results with recommendations
+        """
+        logger.info(f"Executing market analysis delegation: {delegation_request}")
+        
+        try:
+            # Extract request parameters
+            request_type = delegation_request.get("type", "analyze_laptop_demand")
+            timeframe_months = delegation_request.get("timeframe_months", 6)
+            departments = delegation_request.get("departments", ["engineering", "sales", "marketing", "operations"])
+            
+            # Execute the analysis workflow
+            if request_type == "analyze_laptop_demand":
+                return self._analyze_laptop_demand_and_inventory(timeframe_months, departments)
+            elif request_type == "forecast_market_trends":
+                return self._forecast_market_trends(timeframe_months)
+            elif request_type == "model_demand_patterns":
+                return self._model_employee_demand_patterns(departments, timeframe_months)
+            else:
+                return self._comprehensive_market_analysis(timeframe_months, departments)
+                
+        except Exception as e:
+            logger.error(f"Error executing market analysis: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    def _analyze_laptop_demand_and_inventory(self, 
+                                           timeframe_months: int, 
+                                           departments: List[str]) -> Dict[str, Any]:
+        """
+        Analyze laptop demand and inventory levels.
+        
+        This is the main workflow that:
+        1. Gets current inventory from Inventory MCP Server
+        2. Gets hiring forecasts from HR/Planning MCP Server
+        3. Analyzes patterns and generates demand forecast
+        4. Returns structured analysis with recommendations
+        """
+        logger.info(f"Analyzing laptop demand and inventory for {timeframe_months} months")
+        
+        # Step 1: Get current inventory levels (simulated MCP call)
+        current_inventory = self._get_current_inventory_from_mcp()
+        
+        # Step 2: Get hiring forecasts (simulated MCP call)
+        hiring_forecast = self._get_hiring_forecast_from_mcp(departments, timeframe_months)
+        
+        # Step 3: Get refresh cycle data
+        refresh_cycle_data = self._get_refresh_cycle_data(departments)
+        
+        # Step 4: Analyze inventory against demand
+        inventory_analysis = self.policies.analyze_inventory_demand(
+            current_inventory, hiring_forecast, refresh_cycle_data
+        )
+        
+        # Step 5: Generate recommendations
+        recommendations = self.policies.generate_procurement_recommendations(
+            inventory_analysis, [], {}  # Empty market trends and demand patterns for now
+        )
+        
+        # Compile results
+        analysis_result = {
+            "analysis_type": "inventory_demand_analysis",
+            "timeframe_months": timeframe_months,
+            "departments_analyzed": departments,
+            "current_inventory": self._format_inventory_summary(current_inventory),
+            "hiring_forecast": hiring_forecast,
+            "inventory_analysis": inventory_analysis,
+            "recommendations": recommendations,
+            "summary": self._generate_analysis_summary(inventory_analysis),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Store in history
+        self.analysis_history.append(analysis_result)
+        
+        return analysis_result
+    
+    def _forecast_market_trends(self, timeframe_months: int) -> Dict[str, Any]:
+        """Forecast market trends and pricing fluctuations."""
+        logger.info(f"Forecasting market trends for {timeframe_months} months")
+        
+        # Get market data (simulated MCP call)
+        market_data = self._get_market_data_from_mcp()
+        
+        # Analyze market trends
+        market_trends = self.policies.forecast_market_trends(market_data, timeframe_months)
+        
+        # Format trends for output
+        formatted_trends = []
+        for trend in market_trends:
+            formatted_trends.append({
+                "category": trend.category,
+                "trend_direction": trend.trend_direction,
+                "impact_level": trend.impact_level,
+                "timeframe": trend.timeframe,
+                "factors": trend.factors
+            })
+        
+        return {
+            "analysis_type": "market_trend_forecasting",
+            "timeframe_months": timeframe_months,
+            "market_trends": formatted_trends,
+            "trend_count": len(formatted_trends),
+            "high_impact_trends": [t for t in formatted_trends if t["impact_level"] == "high"],
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def _model_employee_demand_patterns(self, 
+                                      departments: List[str], 
+                                      timeframe_months: int) -> Dict[str, Any]:
+        """Model employee demand patterns by department."""
+        logger.info(f"Modeling demand patterns for {departments} over {timeframe_months} months")
+        
+        # Get department data (simulated MCP call)
+        department_data = self._get_department_data_from_mcp(departments)
+        growth_projections = self._get_growth_projections_from_mcp(departments)
+        historical_usage = self._get_historical_usage_from_mcp(departments)
+        
+        # Model demand patterns
+        demand_patterns = self.policies.model_demand_patterns(
+            department_data, growth_projections, historical_usage
+        )
+        
+        # Format patterns for output
+        formatted_patterns = {}
+        for dept, pattern in demand_patterns.items():
+            formatted_patterns[dept] = {
+                "department": pattern.department,
+                "laptop_preferences": pattern.laptop_preferences,
+                "growth_rate": pattern.growth_rate,
+                "refresh_cycle_months": pattern.refresh_cycle_months,
+                "projected_headcount": int(
+                    department_data.get(dept, {}).get("current_headcount", 0) * 
+                    (1 + pattern.growth_rate)
+                )
+            }
+        
+        return {
+            "analysis_type": "demand_pattern_modeling",
+            "timeframe_months": timeframe_months,
+            "departments_analyzed": departments,
+            "demand_patterns": formatted_patterns,
+            "total_projected_demand": self._calculate_total_projected_demand(formatted_patterns),
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def _comprehensive_market_analysis(self, 
+                                     timeframe_months: int, 
+                                     departments: List[str]) -> Dict[str, Any]:
+        """Execute comprehensive market analysis combining all three skills."""
+        logger.info(f"Executing comprehensive market analysis for {timeframe_months} months")
+        
+        # Execute all three analysis types
+        inventory_analysis = self._analyze_laptop_demand_and_inventory(timeframe_months, departments)
+        market_trends = self._forecast_market_trends(timeframe_months)
+        demand_patterns = self._model_employee_demand_patterns(departments, timeframe_months)
+        
+        # Generate comprehensive recommendations
+        recommendations = self.policies.generate_procurement_recommendations(
+            inventory_analysis.get("inventory_analysis", {}),
+            market_trends.get("market_trends", []),
+            demand_patterns.get("demand_patterns", {})
+        )
+        
+        return {
+            "analysis_type": "comprehensive_market_analysis",
+            "timeframe_months": timeframe_months,
+            "departments_analyzed": departments,
+            "inventory_analysis": inventory_analysis,
+            "market_trends": market_trends,
+            "demand_patterns": demand_patterns,
+            "comprehensive_recommendations": recommendations,
+            "executive_summary": self._generate_executive_summary(
+                inventory_analysis, market_trends, demand_patterns, recommendations
+            ),
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    # MCP Server Integration Methods (simulated)
+    
+    def _get_current_inventory_from_mcp(self) -> List[InventoryItem]:
+        """Get current inventory from Inventory MCP Server."""
+        # Simulated data - in real implementation, this would call the MCP server
+        return [
+            InventoryItem(
+                model="MacBook Pro",
+                quantity=45,
+                specifications={"processor": "M2 Pro", "memory": "16GB", "storage": "512GB"},
+                last_updated=datetime.now()
+            ),
+            InventoryItem(
+                model="MacBook Air",
+                quantity=80,
+                specifications={"processor": "M2", "memory": "8GB", "storage": "256GB"},
+                last_updated=datetime.now()
+            )
+        ]
+    
+    def _get_hiring_forecast_from_mcp(self, departments: List[str], months: int) -> Dict[str, int]:
+        """Get hiring forecasts from HR/Planning MCP Server."""
+        # Simulated data - in real implementation, this would call the MCP server
+        base_forecasts = {
+            "engineering": 25,
+            "sales": 15,
+            "marketing": 10,
+            "operations": 8
+        }
+        
+        # Scale by timeframe
+        scaling_factor = months / 6  # Base on 6-month forecast
+        return {dept: int(count * scaling_factor) for dept, count in base_forecasts.items()}
+    
+    def _get_refresh_cycle_data(self, departments: List[str]) -> Dict[str, Any]:
+        """Get refresh cycle data for departments."""
+        # Simulated data
+        return {
+            "refresh_needed": {
+                "MacBook Pro": 12,
+                "MacBook Air": 8
+            },
+            "departments": {
+                dept: {"last_refresh": "2023-01-01", "cycle_months": 36}
+                for dept in departments
+            }
+        }
+    
+    def _get_market_data_from_mcp(self) -> Dict[str, Any]:
+        """Get market data from external sources."""
+        # Simulated data
+        return {
+            "supply_chain_issues": False,
+            "price_increases": True,
+            "component_shortages": False,
+            "new_model_releases": True
+        }
+    
+    def _get_department_data_from_mcp(self, departments: List[str]) -> Dict[str, Any]:
+        """Get department data from HR systems."""
+        # Simulated data
+        return {
+            dept: {
+                "current_headcount": 100 + i * 20,
+                "laptop_requirements": ["MacBook Pro", "MacBook Air"],
+                "budget_allocation": 50000 + i * 10000
+            }
+            for i, dept in enumerate(departments)
+        }
+    
+    def _get_growth_projections_from_mcp(self, departments: List[str]) -> Dict[str, float]:
+        """Get growth projections from planning systems."""
+        # Simulated data
+        return {
+            "engineering": 0.25,    # 25% growth
+            "sales": 0.15,          # 15% growth
+            "marketing": 0.10,      # 10% growth
+            "operations": 0.08      # 8% growth
+        }
+    
+    def _get_historical_usage_from_mcp(self, departments: List[str]) -> Dict[str, Any]:
+        """Get historical usage patterns."""
+        # Simulated data
+        return {
+            dept: {
+                "refresh_cycle_months": 36 + (i * 6),
+                "laptop_utilization": 0.85 + (i * 0.05),
+                "replacement_rate": 0.15 + (i * 0.02)
+            }
+            for i, dept in enumerate(departments)
+        }
+    
+    # Helper Methods
+    
+    def _format_inventory_summary(self, inventory: List[InventoryItem]) -> Dict[str, Any]:
+        """Format inventory data for output."""
+        summary = {}
+        for item in inventory:
+            summary[item.model] = {
+                "quantity": item.quantity,
+                "specifications": item.specifications,
+                "last_updated": item.last_updated.isoformat()
+            }
+        return summary
+    
+    def _generate_analysis_summary(self, inventory_analysis: Dict[str, Any]) -> str:
+        """Generate a human-readable summary of the analysis."""
+        gaps = inventory_analysis.get("inventory_gaps", [])
+        surplus = inventory_analysis.get("inventory_surplus", [])
+        risk = inventory_analysis.get("risk_assessment", "low")
+        
+        if not gaps and not surplus:
+            return "Inventory levels are well-balanced with projected demand."
+        
+        summary_parts = []
+        if gaps:
+            total_gap = sum(gap["gap"] for gap in gaps)
+            summary_parts.append(f"Need to procure {total_gap} additional laptops")
+        
+        if surplus:
+            total_surplus = sum(s["surplus"] for s in surplus)
+            summary_parts.append(f"Have {total_surplus} laptops in surplus")
+        
+        summary_parts.append(f"Risk assessment: {risk}")
+        
+        return ". ".join(summary_parts) + "."
+    
+    def _calculate_total_projected_demand(self, demand_patterns: Dict[str, Any]) -> Dict[str, int]:
+        """Calculate total projected demand across all departments."""
+        total_demand = {"MacBook Pro": 0, "MacBook Air": 0}
+        
+        for dept_data in demand_patterns.values():
+            for model, count in dept_data["laptop_preferences"].items():
+                if model in total_demand:
+                    total_demand[model] += count
+        
+        return total_demand
+    
+    def _generate_executive_summary(self, 
+                                  inventory_analysis: Dict[str, Any],
+                                  market_trends: Dict[str, Any],
+                                  demand_patterns: Dict[str, Any],
+                                  recommendations: Dict[str, Any]) -> str:
+        """Generate an executive summary of the comprehensive analysis."""
+        summary_parts = []
+        
+        # Inventory summary
+        inventory_summary = inventory_analysis.get("summary", "Inventory analysis completed.")
+        summary_parts.append(inventory_summary)
+        
+        # Market trends summary
+        high_impact_trends = market_trends.get("high_impact_trends", [])
+        if high_impact_trends:
+            summary_parts.append(f"Identified {len(high_impact_trends)} high-impact market trends requiring attention.")
+        
+        # Demand patterns summary
+        total_demand = demand_patterns.get("total_projected_demand", {})
+        if total_demand:
+            total_laptops = sum(total_demand.values())
+            summary_parts.append(f"Projected demand: {total_laptops} laptops across all departments.")
+        
+        # Recommendations summary
+        immediate_actions = recommendations.get("immediate_actions", [])
+        if immediate_actions:
+            summary_parts.append(f"Recommended {len(immediate_actions)} immediate actions.")
+        
+        return " ".join(summary_parts)
+
+
+# Global executor instance
+market_analysis_executor = MarketAnalysisAgentExecutor()
