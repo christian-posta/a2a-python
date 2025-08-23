@@ -136,6 +136,38 @@ async def test_supply_chain_optimizer():
         except Exception as e:
             print(f"❌ Error: {e}")
         
+        # Test 6: Market Analysis Integration
+        print("\n🔗 Test 6: Market Analysis Integration")
+        print("-" * 40)
+        
+        try:
+            message = create_text_message_object(role=Role.user, content="perform market analysis for laptop supply chain optimization")
+            
+            async for event in client.send_message(message):
+                print("✅ Success!")
+                print(f"Response: {event}")
+                break
+                
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Test 7: Regular request without market analysis
+        print("\n📋 Test 7: Regular Request (No Market Analysis)")
+        print("-" * 40)
+        
+        try:
+            message = create_text_message_object(role=Role.user, content="optimize laptop supply chain")
+            
+            async for event in client.send_message(message):
+                print("✅ Success!")
+                print(f"Response: {event}")
+                break
+                
+        except Exception as e:
+            print(f"❌ Error: {e}")
+        
         print("\n" + "=" * 60)
         print("🎯 Testing Complete!")
 

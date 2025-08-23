@@ -1,7 +1,7 @@
 {
     "protocolVersion": "0.3.0",
     "name": "Supply Chain Optimizer Agent",
-    "description": "High-level orchestration agent that optimizes enterprise laptop supply chains by analyzing requirements, applying business policies, and generating procurement recommendations. Interprets user intent like 'optimize laptop supply' and provides structured analysis with business rule compliance.",
+    "description": "High-level orchestration agent that optimizes enterprise laptop supply chains by analyzing requirements, applying business policies, and generating procurement recommendations. Integrates with Market Analysis Agent for comprehensive insights. Interprets user intent like 'optimize laptop supply' and provides structured analysis with business rule compliance. Use 'perform market analysis' in requests to get enhanced market-driven recommendations.",
     "url": "http://localhost:9999/a2a/v1",
     "preferredTransport": "JSONRPC",
     "provider": {
@@ -86,6 +86,31 @@
                 "application/json"
             ],
             "outputModes": [
+                "application/json"
+            ]
+        },
+        {
+            "id": "market-analysis-integration",
+            "name": "Market Analysis Integration",
+            "description": "Integrates with Market Analysis Agent to provide comprehensive supply chain insights. When requests include 'perform market analysis', automatically delegates to specialized market analysis capabilities and combines results for enhanced decision-making.",
+            "tags": [
+                "integration",
+                "delegation",
+                "market-analysis",
+                "collaboration",
+                "enhanced-insights"
+            ],
+            "examples": [
+                "perform market analysis for laptop supply chain optimization",
+                "optimize supply chain with market analysis",
+                "get comprehensive analysis including market insights"
+            ],
+            "inputModes": [
+                "text/plain",
+                "application/json"
+            ],
+            "outputModes": [
+                "text/plain",
                 "application/json"
             ]
         }
