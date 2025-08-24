@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from tracing_config import add_event, set_attribute
+
 
 @dataclass
 class InventoryItem:
@@ -91,6 +93,10 @@ class MarketAnalysisPolicies:
         Returns:
             Analysis results with gaps and recommendations
         """
+        add_event("inventory_demand_analysis_started")
+        set_attribute("analysis.inventory_count", len(current_inventory))
+        set_attribute("analysis.departments_count", len(hiring_forecast))
+        
         analysis = {
             "inventory_gaps": [],
             "inventory_surplus": [],
@@ -100,6 +106,7 @@ class MarketAnalysisPolicies:
         
         # Calculate total projected demand
         total_demand = self._calculate_total_demand(hiring_forecast, refresh_cycle_data)
+        set_attribute("analysis.total_demand", str(total_demand))
         
         # Analyze each laptop model
         for model in ["MacBook Pro", "MacBook Air"]:
@@ -141,6 +148,11 @@ class MarketAnalysisPolicies:
             analysis["risk_assessment"] = "high"
         elif analysis["inventory_gaps"]:
             analysis["risk_assessment"] = "medium"
+        
+        set_attribute("analysis.risk_assessment", analysis["risk_assessment"])
+        set_attribute("analysis.gaps_count", len(analysis["inventory_gaps"]))
+        set_attribute("analysis.surplus_count", len(analysis["inventory_surplus"]))
+        add_event("inventory_demand_analysis_completed")
             
         return analysis
     

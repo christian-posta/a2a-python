@@ -6,7 +6,9 @@ This module sets up the Market Analysis Agent as an HTTP server using the A2A fr
 The agent provides market analysis capabilities for laptop demand forecasting and inventory optimization.
 """
 
+import os
 import uvicorn
+from dotenv import load_dotenv
 
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -20,6 +22,10 @@ from a2a.types import (
     HTTPAuthSecurityScheme,
 )
 from agent_executor import MarketAnalysisAgentExecutor
+from tracing_config import initialize_tracing
+
+# Load environment variables
+load_dotenv()
 
 
 if __name__ == '__main__':
@@ -117,6 +123,22 @@ if __name__ == '__main__':
         http_handler=request_handler,
         extended_agent_card=extended_agent_card,
     )
+
+    # Initialize OpenTelemetry tracing
+    jaeger_host = os.getenv("JAEGER_HOST")
+    jaeger_port = int(os.getenv("JAEGER_PORT", "4317"))
+    
+    initialize_tracing(
+        service_name="market-analysis-agent",
+        jaeger_host=jaeger_host,
+        jaeger_port=jaeger_port,
+        enable_console_exporter=True
+    )
+    
+    if jaeger_host:
+        print(f"🔗 Tracing configured with OTLP at {jaeger_host}:{jaeger_port}")
+    else:
+        print("🔗 Tracing configured with console exporter only")
 
     # Start the server on port 9998 (different from supply-chain-agent's 9999)
     print("🚀 Starting Market Analysis Agent on http://localhost:9998")

@@ -7,8 +7,10 @@ handling delegation requests and orchestrating market analysis workflows.
 
 import json
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -21,6 +23,13 @@ from business_policies import (
     DemandPattern
 )
 from mcp_client import MCPClient
+from tracing_config import (
+    span, add_event, set_attribute, extract_context_from_headers, 
+    inject_context_to_headers, initialize_tracing
+)
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,27 +40,49 @@ class MarketAnalysisAgent:
     """Market Analysis Agent that provides laptop demand forecasting and inventory optimization."""
 
     def __init__(self):
+        # Initialize OpenTelemetry tracing
+        initialize_tracing(
+            service_name="market-analysis-agent",
+            jaeger_host=os.getenv("JAEGER_HOST"),
+            jaeger_port=int(os.getenv("JAEGER_PORT", "4317")),
+            enable_console_exporter=True
+        )
+        
         self.policies = market_analysis_policies
         self.analysis_history = []
 
     async def invoke(self, request_text: str = "") -> str:
         """Main entry point for market analysis requests."""
-        if not request_text:
-            request_text = "analyze laptop demand and inventory"
-        
-        # Parse the request and determine analysis type
-        delegation_request = self._parse_request(request_text)
-        
-        # Execute the analysis using the core logic
-        core = MarketAnalysisAgentCore()
-        result = core.execute_delegation(delegation_request)
-        
-        # Discover MCP tools
-        mcp_tools = await self._discover_mcp_tools()
-        result['mcp_tools'] = mcp_tools
-        
-        # Format the response for display
-        return self._format_response(result)
+        with span("market_analysis_agent.invoke", {
+            "request.text": request_text[:100],
+            "request.has_content": bool(request_text)
+        }) as span_obj:
+            
+            if not request_text:
+                request_text = "analyze laptop demand and inventory"
+                add_event("using_default_request")
+            
+            add_event("invoke_started", {"request_text": request_text})
+            
+            # Parse the request and determine analysis type
+            delegation_request = self._parse_request(request_text)
+            add_event("request_parsed", {"request_type": delegation_request.get("type")})
+            
+            # Execute the analysis using the core logic
+            core = MarketAnalysisAgentCore()
+            result = core.execute_delegation(delegation_request)
+            add_event("analysis_completed", {"analysis_type": result.get("analysis_type")})
+            
+            # Discover MCP tools
+            mcp_tools = await self._discover_mcp_tools()
+            result['mcp_tools'] = mcp_tools
+            add_event("mcp_tools_discovered", {"tool_count": len(mcp_tools)})
+            
+            # Format the response for display
+            response = self._format_response(result)
+            add_event("response_formatted", {"response_length": len(response)})
+            
+            return response
 
     def _parse_request(self, request_text: str) -> Dict[str, Any]:
         """Parse the request text and create a delegation request."""
@@ -193,6 +224,31 @@ class MarketAnalysisAgentExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
+        # Extract trace context from headers if available
+        trace_context = None
+        if hasattr(context, 'headers'):
+            headers = context.headers
+            trace_context = extract_context_from_headers(headers)
+            if trace_context:
+                add_event("trace_context_extracted_from_headers")
+                set_attribute("tracing.context_extracted", True)
+        
+        if trace_context:
+            with span("market_analysis_agent.executor.execute", parent_context=trace_context) as span_obj:
+                await self._execute_with_tracing(context, event_queue, span_obj)
+        else:
+            with span("market_analysis_agent.executor.execute") as span_obj:
+                add_event("no_trace_context_provided")
+                set_attribute("tracing.context_extracted", False)
+                await self._execute_with_tracing(context, event_queue, span_obj)
+    
+    async def _execute_with_tracing(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+        span_obj
+    ):
+        """Execute with tracing support."""
         # Extract request text from context if available
         request_text = ""
         if hasattr(context, 'request') and context.request:
@@ -206,11 +262,17 @@ class MarketAnalysisAgentExecutor(AgentExecutor):
                 elif isinstance(content, dict) and 'content' in content:
                     request_text = content['content']
         
+        set_attribute("request.text", request_text[:100])
+        set_attribute("request.has_content", bool(request_text))
+        
         try:
             result = await self.agent.invoke(request_text)
+            add_event("agent_invoke_successful")
             await event_queue.enqueue_event(new_agent_text_message(result))
         except Exception as e:
             error_message = f"Error during market analysis: {str(e)}"
+            add_event("agent_invoke_failed", {"error": str(e)})
+            set_attribute("error.message", str(e))
             await event_queue.enqueue_event(new_agent_text_message(error_message))
 
     async def cancel(
@@ -240,31 +302,51 @@ class MarketAnalysisAgentCore:
         Returns:
             Comprehensive market analysis results with recommendations
         """
-        logger.info(f"Executing market analysis delegation: {delegation_request}")
-        
-        try:
-            # Extract request parameters
-            request_type = delegation_request.get("type", "analyze_laptop_demand")
-            timeframe_months = delegation_request.get("timeframe_months", 6)
-            departments = delegation_request.get("departments", ["engineering", "sales", "marketing", "operations"])
+        with span("market_analysis_agent.process_request", {
+            "request.type": delegation_request.get("type"),
+            "request.timeframe_months": delegation_request.get("timeframe_months"),
+            "request.departments_count": len(delegation_request.get("departments", []))
+        }) as span_obj:
             
-            # Execute the analysis workflow
-            if request_type == "analyze_laptop_demand":
-                return self._analyze_laptop_demand_and_inventory(timeframe_months, departments)
-            elif request_type == "forecast_market_trends":
-                return self._forecast_market_trends(timeframe_months)
-            elif request_type == "model_demand_patterns":
-                return self._model_employee_demand_patterns(departments, timeframe_months)
-            else:
-                return self._comprehensive_market_analysis(timeframe_months, departments)
+            logger.info(f"Executing market analysis delegation: {delegation_request}")
+            add_event("delegation_execution_started")
+            
+            try:
+                # Extract request parameters
+                request_type = delegation_request.get("type", "analyze_laptop_demand")
+                timeframe_months = delegation_request.get("timeframe_months", 6)
+                departments = delegation_request.get("departments", ["engineering", "sales", "marketing", "operations"])
                 
-        except Exception as e:
-            logger.error(f"Error executing market analysis: {e}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
+                set_attribute("analysis.request_type", request_type)
+                set_attribute("analysis.timeframe_months", timeframe_months)
+                set_attribute("analysis.departments", str(departments))
+                
+                # Execute the analysis workflow
+                if request_type == "analyze_laptop_demand":
+                    result = self._analyze_laptop_demand_and_inventory(timeframe_months, departments)
+                elif request_type == "forecast_market_trends":
+                    result = self._forecast_market_trends(timeframe_months)
+                elif request_type == "model_demand_patterns":
+                    result = self._model_employee_demand_patterns(departments, timeframe_months)
+                else:
+                    result = self._comprehensive_market_analysis(timeframe_months, departments)
+                
+                add_event("analysis_workflow_completed", {"workflow_type": request_type})
+                set_attribute("analysis.status", "success")
+                
+                return result
+                    
+            except Exception as e:
+                logger.error(f"Error executing market analysis: {e}")
+                add_event("analysis_workflow_failed", {"error": str(e)})
+                set_attribute("analysis.status", "error")
+                set_attribute("analysis.error", str(e))
+                
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
     
     def _analyze_laptop_demand_and_inventory(self, 
                                            timeframe_months: int, 
