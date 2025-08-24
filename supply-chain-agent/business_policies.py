@@ -6,6 +6,7 @@ applies when analyzing supply chain optimization requests.
 """
 
 from typing import Dict, Any, List
+from tracing_config import span, add_event, set_attribute
 
 
 class BusinessPolicies:
@@ -68,72 +69,141 @@ class BusinessPolicies:
 
     def get_policy_summary(self) -> Dict[str, Any]:
         """Get a summary of all business policies for display."""
-        return {
-            "inventory_management": {
-                "buffer_months": self.inventory_buffer_months,
-                "minimum_stock_levels": self.minimum_stock_levels
-            },
-            "financial_controls": {
-                "approval_threshold": self.approval_threshold,
-                "max_order_value": self.max_order_value,
-                "quarterly_budgets": self.budget_allocations
-            },
-            "vendor_management": {
-                "preferred_vendors": self.preferred_vendors,
-                "vendor_tiers": self.approved_vendor_tiers
-            },
-            "compliance": {
-                "requirements": self.compliance_requirements,
-                "quality_standards": self.quality_standards
-            },
-            "operational": {
-                "lead_times": self.lead_time_requirements,
-                "target_products": self.target_laptop_types
+        with span("business_policies.get_policy_summary") as span_obj:
+            add_event("policy_summary_requested")
+            set_attribute("policies.inventory_buffer_months", self.inventory_buffer_months)
+            set_attribute("policies.approval_threshold", self.approval_threshold)
+            set_attribute("policies.max_order_value", self.max_order_value)
+            set_attribute("policies.preferred_vendors_count", len(self.preferred_vendors))
+            
+            result = {
+                "inventory_management": {
+                    "buffer_months": self.inventory_buffer_months,
+                    "minimum_stock_levels": self.minimum_stock_levels
+                },
+                "financial_controls": {
+                    "approval_threshold": self.approval_threshold,
+                    "max_order_value": self.max_order_value,
+                    "quarterly_budgets": self.budget_allocations
+                },
+                "vendor_management": {
+                    "preferred_vendors": self.preferred_vendors,
+                    "vendor_tiers": self.approved_vendor_tiers
+                },
+                "compliance": {
+                    "requirements": self.compliance_requirements,
+                    "quality_standards": self.quality_standards
+                },
+                "operational": {
+                    "lead_times": self.lead_time_requirements,
+                    "target_products": self.target_laptop_types
+                }
             }
-        }
+            
+            add_event("policy_summary_generated", {"summary_keys": list(result.keys())})
+            return result
 
     def validate_request_against_policies(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate a request against current business policies."""
-        validation_result = {
-            "is_valid": True,
-            "violations": [],
-            "warnings": [],
-            "recommendations": []
-        }
-        
-        # Check order value against approval threshold
-        if "order_value" in request_data:
-            order_value = request_data["order_value"]
-            if order_value > self.max_order_value:
-                validation_result["is_valid"] = False
-                validation_result["violations"].append(
-                    f"Order value ${order_value:,} exceeds maximum allowed ${self.max_order_value:,}"
-                )
-            elif order_value > self.approval_threshold:
-                validation_result["warnings"].append(
-                    f"Order value ${order_value:,} requires CFO approval (threshold: ${self.approval_threshold:,})"
-                )
-        
-        # Check vendor against approved list
-        if "vendor" in request_data:
-            vendor = request_data["vendor"]
-            if vendor not in self.preferred_vendors:
-                validation_result["warnings"].append(
-                    f"Vendor '{vendor}' is not in preferred vendor list"
-                )
-        
-        # Check inventory levels
-        if "product" in request_data and "quantity" in request_data:
-            product = request_data["product"]
-            quantity = request_data["quantity"]
-            if product in self.minimum_stock_levels:
-                min_level = self.minimum_stock_levels[product]
-                if quantity < min_level:
-                    validation_result["warnings"].append(
-                        f"Order quantity {quantity} for {product} is below minimum stock level {min_level}"
+        with span("business_policies.validate_request", {
+            "request.order_value": request_data.get("order_value"),
+            "request.vendor": request_data.get("vendor"),
+            "request.product": request_data.get("product"),
+            "request.quantity": request_data.get("quantity")
+        }) as span_obj:
+            
+            add_event("policy_validation_started", {"request_data": str(request_data)})
+            
+            validation_result = {
+                "is_valid": True,
+                "violations": [],
+                "warnings": [],
+                "recommendations": []
+            }
+            
+            # Check order value against approval threshold
+            if "order_value" in request_data:
+                order_value = request_data["order_value"]
+                set_attribute("validation.order_value", order_value)
+                
+                if order_value > self.max_order_value:
+                    validation_result["is_valid"] = False
+                    validation_result["violations"].append(
+                        f"Order value ${order_value:,} exceeds maximum allowed ${self.max_order_value:,}"
                     )
-        
-        return validation_result
+                    add_event("policy_violation", {
+                        "type": "max_order_value_exceeded",
+                        "order_value": order_value,
+                        "max_allowed": self.max_order_value
+                    })
+                    set_attribute("validation.violations.max_order_value_exceeded", True)
+                    
+                elif order_value > self.approval_threshold:
+                    validation_result["warnings"].append(
+                        f"Order value ${order_value:,} requires CFO approval (threshold: ${self.approval_threshold:,})"
+                    )
+                    add_event("policy_warning", {
+                        "type": "cfo_approval_required",
+                        "order_value": order_value,
+                        "approval_threshold": self.approval_threshold
+                    })
+                    set_attribute("validation.warnings.cfo_approval_required", True)
+            
+            # Check vendor against approved list
+            if "vendor" in request_data:
+                vendor = request_data["vendor"]
+                set_attribute("validation.vendor", vendor)
+                
+                if vendor not in self.preferred_vendors:
+                    validation_result["warnings"].append(
+                        f"Vendor '{vendor}' is not in preferred vendor list"
+                    )
+                    add_event("policy_warning", {
+                        "type": "non_preferred_vendor",
+                        "vendor": vendor,
+                        "preferred_vendors": self.preferred_vendors
+                    })
+                    set_attribute("validation.warnings.non_preferred_vendor", True)
+                else:
+                    set_attribute("validation.vendor_approved", True)
+            
+            # Check inventory levels
+            if "product" in request_data and "quantity" in request_data:
+                product = request_data["product"]
+                quantity = request_data["quantity"]
+                set_attribute("validation.product", product)
+                set_attribute("validation.quantity", quantity)
+                
+                if product in self.minimum_stock_levels:
+                    min_level = self.minimum_stock_levels[product]
+                    set_attribute("validation.minimum_stock_level", min_level)
+                    
+                    if quantity < min_level:
+                        validation_result["warnings"].append(
+                            f"Order quantity {quantity} for {product} is below minimum stock level {min_level}"
+                        )
+                        add_event("policy_warning", {
+                            "type": "below_minimum_stock",
+                            "product": product,
+                            "quantity": quantity,
+                            "minimum_level": min_level
+                        })
+                        set_attribute("validation.warnings.below_minimum_stock", True)
+                    else:
+                        set_attribute("validation.stock_level_adequate", True)
+            
+            # Set final validation attributes
+            set_attribute("validation.is_valid", validation_result["is_valid"])
+            set_attribute("validation.violations_count", len(validation_result["violations"]))
+            set_attribute("validation.warnings_count", len(validation_result["warnings"]))
+            
+            add_event("policy_validation_completed", {
+                "is_valid": validation_result["is_valid"],
+                "violations_count": len(validation_result["violations"]),
+                "warnings_count": len(validation_result["warnings"])
+            })
+            
+            return validation_result
 
 
 # Global instance for easy access

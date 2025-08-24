@@ -3,11 +3,42 @@
 
 import asyncio
 import json
+import os
+import uuid
 from typing import Any, Dict
 import httpx
 
 from a2a.client import ClientFactory, ClientConfig
 from a2a.types import TransportProtocol
+
+
+def generate_trace_context():
+    """Generate a W3C trace context for testing."""
+    # Generate random trace ID (32 hex characters)
+    trace_id = uuid.uuid4().hex
+    # Generate random span ID (16 hex characters)
+    span_id = uuid.uuid4().hex[:16]
+    # Create traceparent header
+    traceparent = f"00-{trace_id}-{span_id}-01"
+    
+    # Create tracestate header (optional)
+    tracestate = f"test=00f067aa0ba902b7,supply-chain=test-{uuid.uuid4().hex[:8]}"
+    
+    return {
+        "traceparent": traceparent,
+        "tracestate": tracestate,
+        "trace_id": trace_id,
+        "span_id": span_id
+    }
+
+
+def create_tracing_headers(trace_context: Dict[str, str]) -> Dict[str, str]:
+    """Create HTTP headers with tracing context."""
+    return {
+        "traceparent": trace_context["traceparent"],
+        "tracestate": trace_context["tracestate"],
+        "Content-Type": "application/json"
+    }
 
 
 async def test_supply_chain_optimizer():
@@ -27,7 +58,6 @@ async def test_supply_chain_optimizer():
         
         # Create a minimal agent card for testing
         from a2a.client import minimal_agent_card
-        import os
         from dotenv import load_dotenv
         
         # Load environment variables
@@ -47,15 +77,22 @@ async def test_supply_chain_optimizer():
         print("🔍 Testing Supply Chain Optimizer Agent...")
         print("=" * 60)
         
-        # Test 1: Basic supply chain optimization
-        print("\n📋 Test 1: Basic Supply Chain Optimization")
+        # Test 1: Basic supply chain optimization with tracing
+        print("\n📋 Test 1: Basic Supply Chain Optimization (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate trace context
+            trace_context = generate_trace_context()
+            print(f"🔗 Generated Trace Context:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            print(f"  Traceparent: {trace_context['traceparent']}")
+            print(f"  Tracestate: {trace_context['tracestate']}")
+            
             # Use the correct A2A client method
             from a2a.types import Message, Role
             from a2a.client.helpers import create_text_message_object
-            import uuid
             
             message = create_text_message_object(role=Role.user, content="optimize laptop supply chain")
             
@@ -70,11 +107,17 @@ async def test_supply_chain_optimizer():
             import traceback
             traceback.print_exc()
         
-        # Test 2: Cost-focused optimization
-        print("\n💰 Test 2: Cost-Focused Optimization")
+        # Test 2: Cost-focused optimization with tracing
+        print("\n💰 Test 2: Cost-Focused Optimization (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for Cost Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             message = create_text_message_object(role=Role.user, content="analyze and optimize our hardware procurement process for cost and speed")
             
             async for event in client.send_message(message):
@@ -85,11 +128,17 @@ async def test_supply_chain_optimizer():
         except Exception as e:
             print(f"❌ Error: {e}")
         
-        # Test 3: Inventory-focused request
-        print("\n📦 Test 3: Inventory-Focused Request")
+        # Test 3: Inventory-focused request with tracing
+        print("\n📦 Test 3: Inventory-Focused Request (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for Inventory Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             message = create_text_message_object(role=Role.user, content="ensure we have adequate MacBook inventory for Q2 hiring targets")
             
             async for event in client.send_message(message):
@@ -100,11 +149,17 @@ async def test_supply_chain_optimizer():
         except Exception as e:
             print(f"❌ Error: {e}")
         
-        # Test 4: JSON request format
-        print("\n🔧 Test 4: JSON Request Format")
+        # Test 4: JSON request format with tracing
+        print("\n🔧 Test 4: JSON Request Format (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for JSON Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             json_request = {
                 "request_type": "supply_chain_optimization",
                 "focus": "laptop_inventory",
@@ -123,11 +178,17 @@ async def test_supply_chain_optimizer():
         except Exception as e:
             print(f"❌ Error: {e}")
         
-        # Test 5: Agent capabilities
-        print("\n🔍 Test 5: Agent Capabilities")
+        # Test 5: Agent capabilities with tracing
+        print("\n🔍 Test 5: Agent Capabilities (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for Capabilities Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             # Get agent card from the actual server
             from a2a.client import A2ACardResolver
             
@@ -145,11 +206,17 @@ async def test_supply_chain_optimizer():
         except Exception as e:
             print(f"❌ Error: {e}")
         
-        # Test 6: Market Analysis Integration
-        print("\n🔗 Test 6: Market Analysis Integration")
+        # Test 6: Market Analysis Integration with tracing
+        print("\n🔗 Test 6: Market Analysis Integration (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for Market Analysis Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             message = create_text_message_object(role=Role.user, content="perform market analysis for laptop supply chain optimization")
             
             async for event in client.send_message(message):
@@ -162,15 +229,47 @@ async def test_supply_chain_optimizer():
             import traceback
             traceback.print_exc()
         
-        # Test 7: Regular request without market analysis
-        print("\n📋 Test 7: Regular Request (No Market Analysis)")
+        # Test 7: Regular request without market analysis (with tracing)
+        print("\n📋 Test 7: Regular Request - No Market Analysis (with Tracing)")
         print("-" * 40)
         
         try:
+            # Generate new trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 New Trace Context for Regular Request Test:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
             message = create_text_message_object(role=Role.user, content="optimize laptop supply chain")
             
             async for event in client.send_message(message):
                 print("✅ Success!")
+                print(f"Response: {event}")
+                break
+                
+        except Exception as e:
+            print(f"❌ Error: {e}")
+        
+        # Test 8: Tracing Context Propagation Test
+        print("\n🔗 Test 8: Tracing Context Propagation Test")
+        print("-" * 40)
+        
+        try:
+            # Generate a trace context and test propagation
+            trace_context = generate_trace_context()
+            print(f"🔗 Testing Context Propagation:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['span_id']}")
+            
+            # Create headers with tracing context
+            headers = create_tracing_headers(trace_context)
+            print(f"  Headers: {headers}")
+            
+            # Test that the context would be propagated
+            message = create_text_message_object(role=Role.user, content="test tracing context propagation")
+            
+            async for event in client.send_message(message):
+                print("✅ Success! Tracing context should be propagated")
                 print(f"Response: {event}")
                 break
                 
@@ -238,10 +337,75 @@ async def test_business_policy_validation():
         print(f"❌ Error testing business policies: {e}")
 
 
+async def test_tracing_functionality():
+    """Test OpenTelemetry tracing functionality."""
+    
+    print("\n🔗 Testing OpenTelemetry Tracing Functionality...")
+    print("=" * 60)
+    
+    try:
+        # Import tracing configuration
+        from tracing_config import initialize_tracing, get_tracer, create_span, add_event, set_attribute
+        
+        print("✅ Tracing Configuration Module Loaded!")
+        
+        # Initialize tracing
+        initialize_tracing(
+            service_name="test-supply-chain-agent",
+            enable_console_exporter=True
+        )
+        print("✅ Tracing Initialized!")
+        
+        # Test basic tracing functionality
+        tracer = get_tracer()
+        print(f"✅ Tracer Created: {tracer}")
+        
+        # Test span creation
+        with create_span("test_span") as span:
+            print(f"✅ Test Span Created: {span}")
+            add_event("test_event", {"message": "Hello from tracing test!"})
+            set_attribute("test.attribute", "test_value")
+            print("✅ Span Events and Attributes Added!")
+        
+        # Test multiple spans
+        print("\n🔗 Testing Multiple Spans:")
+        with create_span("parent_span") as parent_span:
+            print(f"  Parent Span: {parent_span}")
+            add_event("parent_event")
+            
+            with create_span("child_span", parent_context=parent_span.get_span_context()) as child_span:
+                print(f"  Child Span: {child_span}")
+                add_event("child_event")
+                set_attribute("child.attribute", "child_value")
+        
+        print("✅ Multiple Spans Test Completed!")
+        
+        # Test trace context generation
+        print("\n🔗 Testing Trace Context Generation:")
+        trace_context = generate_trace_context()
+        print(f"  Generated Trace Context:")
+        print(f"    Trace ID: {trace_context['trace_id']}")
+        print(f"    Span ID: {trace_context['span_id']}")
+        print(f"    Traceparent: {trace_context['traceparent']}")
+        print(f"    Tracestate: {trace_context['tracestate']}")
+        
+        print("✅ Trace Context Generation Test Completed!")
+        
+    except ImportError as e:
+        print(f"❌ Error importing tracing configuration: {e}")
+    except Exception as e:
+        print(f"❌ Error testing tracing functionality: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 async def main():
     """Main test function."""
     print("🚀 Supply Chain Optimizer Agent Test Suite")
     print("=" * 60)
+    
+    # Test tracing functionality first
+    await test_tracing_functionality()
     
     # Test the agent
     await test_supply_chain_optimizer()

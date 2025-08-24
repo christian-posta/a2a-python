@@ -20,8 +20,27 @@ from agent_executor import (
     SupplyChainOptimizerExecutor,  # type: ignore[import-untyped]
 )
 
+# Initialize OpenTelemetry tracing
+from tracing_config import initialize_tracing
 
 if __name__ == '__main__':
+    # Initialize tracing before starting the server
+    jaeger_host = os.getenv("JAEGER_HOST")
+    jaeger_port = int(os.getenv("JAEGER_PORT", "4317"))
+    
+    print("🔗 Initializing OpenTelemetry tracing...")
+    initialize_tracing(
+        service_name="supply-chain-agent",
+        jaeger_host=jaeger_host,
+        jaeger_port=jaeger_port,
+        enable_console_exporter=True
+    )
+    
+    if jaeger_host:
+        print(f"🔗 Tracing configured with OTLP at {jaeger_host}:{jaeger_port}")
+    else:
+        print("🔗 Tracing configured with console exporter only")
+    
     # --8<-- [start:AgentSkill]
     skill = AgentSkill(
         id='supply_chain_optimization',
