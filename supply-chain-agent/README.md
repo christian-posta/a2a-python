@@ -25,6 +25,31 @@ The Supply Chain Optimizer Agent is a high-level orchestration agent that:
 - **Vendor Management**: Preferred vendor lists, tier-based approval
 - **Compliance**: ISO 27001, GDPR, SOC 2 compliance requirements
 
+## Configuration
+
+The agent can be configured using environment variables. Copy `.env.example` to `.env` and modify as needed:
+
+```bash
+cp .env.example .env
+```
+
+### Environment Variables
+
+- **`MARKET_ANALYSIS_AGENT_URL`**: URL for the market analysis agent (default: `http://localhost:9998/`)
+- **`SUPPLY_CHAIN_AGENT_PORT`**: Port for this agent to run on (default: `9999`)
+- **`SUPPLY_CHAIN_AGENT_URL`**: External URL for this agent (default: `http://localhost:{port}/`)
+
+### Example .env file
+
+```env
+# Market Analysis Agent Configuration
+MARKET_ANALYSIS_AGENT_URL=http://localhost:9998/
+
+# Supply Chain Agent Configuration
+SUPPLY_CHAIN_AGENT_PORT=9999
+SUPPLY_CHAIN_AGENT_URL=http://localhost:9999/
+```
+
 ## Quick Start
 
 ### 1. Run the Agent

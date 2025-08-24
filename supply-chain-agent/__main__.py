@@ -1,4 +1,9 @@
 import uvicorn
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -43,12 +48,18 @@ if __name__ == '__main__':
         ],
     )
 
+    # Get port from environment variable or use default
+    port = int(os.getenv("SUPPLY_CHAIN_AGENT_PORT", "9999"))
+    
     # --8<-- [start:AgentCard]
+    # Get agent URL from environment variable or use default
+    agent_url = os.getenv("SUPPLY_CHAIN_AGENT_URL", f"http://localhost:{port}/")
+    
     # This will be the public-facing agent card
     public_agent_card = AgentCard(
         name='Supply Chain Optimizer Agent',
         description='High-level orchestration agent that optimizes enterprise laptop supply chains by analyzing requirements, applying business policies, and generating procurement recommendations. Interprets user intent like "optimize laptop" and provides structured analysis with business rule compliance.',
-        url='http://localhost:9999/',
+        url=agent_url,
         version='1.0.0',
         protocol_version='0.3.0',
         preferred_transport='JSONRPC',
@@ -106,4 +117,7 @@ if __name__ == '__main__':
         extended_agent_card=specific_extended_agent_card,
     )
 
-    uvicorn.run(server.build(), host='0.0.0.0', port=9999)
+    print(f"🚀 Starting Supply Chain Agent on port {port}")
+    print(f"🔗 Agent URL: {agent_url}")
+    
+    uvicorn.run(server.build(), host='0.0.0.0', port=port)

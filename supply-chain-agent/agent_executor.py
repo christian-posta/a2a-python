@@ -2,6 +2,7 @@ from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message
 import json
+import os
 from typing import Dict, Any, List
 from business_policies import business_policies
 import httpx
@@ -17,7 +18,11 @@ class SupplyChainOptimizerAgent:
         # Use business policies from configuration
         self.policies = business_policies
         # Market analysis agent client configuration
-        self.market_analysis_url = "http://localhost:9998/"
+        self.market_analysis_url = os.getenv(
+            "MARKET_ANALYSIS_AGENT_URL", 
+            "http://localhost:9998/"
+        )
+        print(f"🔗 Market Analysis Agent URL: {self.market_analysis_url}")
         self.market_analysis_client = None
 
     async def _get_market_analysis_client(self):

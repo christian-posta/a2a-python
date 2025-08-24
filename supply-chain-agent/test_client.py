@@ -27,8 +27,17 @@ async def test_supply_chain_optimizer():
         
         # Create a minimal agent card for testing
         from a2a.client import minimal_agent_card
+        import os
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Get agent URL from environment or use default
+        agent_url = os.getenv("SUPPLY_CHAIN_AGENT_URL", "http://localhost:9999/")
+        
         test_card = minimal_agent_card(
-            url="http://localhost:9999/",
+            url=agent_url,
             transports=["JSONRPC"]  # Use uppercase to match TransportProtocol.jsonrpc
         )
         
@@ -122,7 +131,7 @@ async def test_supply_chain_optimizer():
             # Get agent card from the actual server
             from a2a.client import A2ACardResolver
             
-            resolver = A2ACardResolver(httpx_client, "http://localhost:9999")
+            resolver = A2ACardResolver(httpx_client, agent_url.rstrip('/'))
             agent_card = await resolver.get_agent_card()
             
             print("✅ Agent Card Retrieved!")
