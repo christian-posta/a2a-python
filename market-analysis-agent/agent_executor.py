@@ -20,6 +20,7 @@ from business_policies import (
     MarketTrend,
     DemandPattern
 )
+from mcp_client import MCPClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +45,10 @@ class MarketAnalysisAgent:
         # Execute the analysis using the core logic
         core = MarketAnalysisAgentCore()
         result = core.execute_delegation(delegation_request)
+        
+        # Discover MCP tools
+        mcp_tools = await self._discover_mcp_tools()
+        result['mcp_tools'] = mcp_tools
         
         # Format the response for display
         return self._format_response(result)
@@ -74,6 +79,16 @@ class MarketAnalysisAgent:
             delegation_request["timeframe_months"] = 12
         
         return delegation_request
+
+    async def _discover_mcp_tools(self) -> List[Dict[str, Any]]:
+        """Discover available tools from MCP servers."""
+        try:
+            async with MCPClient() as mcp_client:
+                tools = await mcp_client.discover_tools()
+                return tools
+        except Exception as e:
+            logger.error(f"Failed to discover MCP tools: {e}")
+            return []
 
     def _format_response(self, result: Dict[str, Any]) -> str:
         """Format the analysis result into a readable response."""
@@ -148,6 +163,16 @@ class MarketAnalysisAgent:
                         response += f"- **{trend['category']}**: {trend['trend_direction']} ({trend['impact_level']} impact)\n"
                     response += "\n"
         
+        # Add MCP tools section
+        mcp_tools = result.get('mcp_tools', [])
+        if mcp_tools:
+            response += "## Available MCP Tools\n"
+            for tool in mcp_tools:
+                response += f"- **{tool['name']}**: {tool['description']}\n"
+            response += "\n"
+        else:
+            response += "## Available MCP Tools\nCould not connect to MCP servers\n\n"
+        
         response += """## Next Steps
 This analysis provides comprehensive market insights for laptop procurement decisions. 
 Consider integrating with procurement systems for automated order processing.
@@ -181,8 +206,12 @@ class MarketAnalysisAgentExecutor(AgentExecutor):
                 elif isinstance(content, dict) and 'content' in content:
                     request_text = content['content']
         
-        result = await self.agent.invoke(request_text)
-        await event_queue.enqueue_event(new_agent_text_message(result))
+        try:
+            result = await self.agent.invoke(request_text)
+            await event_queue.enqueue_event(new_agent_text_message(result))
+        except Exception as e:
+            error_message = f"Error during market analysis: {str(e)}"
+            await event_queue.enqueue_event(new_agent_text_message(error_message))
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
