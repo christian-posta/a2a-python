@@ -12,12 +12,17 @@ from mcp.client.streamable_http import streamablehttp_client
 
 logger = logging.getLogger(__name__)
 
+# Configuration
+MCP_SERVER_BASE_URL = "http://localhost:3000"
+MCP_SERVER_PATH = "/general/mcp"
+
 
 class MCPClient:
     """Client for communicating with MCP servers using the official SDK."""
     
-    def __init__(self, base_url: str = "http://localhost:3000"):
+    def __init__(self, base_url: str = MCP_SERVER_BASE_URL, mcp_path: str = MCP_SERVER_PATH):
         self.base_url = base_url
+        self.mcp_path = mcp_path
         
     async def __aenter__(self):
         return self
@@ -37,7 +42,7 @@ class MCPClient:
         """
         try:
             # Use the official MCP SDK to connect and discover tools
-            async with streamablehttp_client(f"{self.base_url}/mcp") as (read, write, _):
+            async with streamablehttp_client(f"{self.base_url}{self.mcp_path}") as (read, write, _):
                 async with ClientSession(read, write) as session:
                     # Initialize the connection
                     await session.initialize()
