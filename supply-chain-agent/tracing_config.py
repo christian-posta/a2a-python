@@ -209,23 +209,40 @@ class TracingConfig:
                 def record_exception(self, exception):
                     pass
                 def get_span_context(self):
-                    return trace.get_current_span().get_span_context()
+                    # Return a dummy context to avoid errors
+                    return None
             return DummySpan()
         
         tracer = self.get_tracer()
         
-        if parent_context:
-            context = trace.set_span_in_context(trace.NonRecordingSpan(parent_context))
-        else:
-            context = trace.get_current_span().get_span_context()
-        
-        span = tracer.start_span(name, context=context)
-        
-        if attributes:
-            for key, value in attributes.items():
-                span.set_attribute(key, value)
-        
-        return span
+        # Simplified span creation to avoid context issues
+        try:
+            span = tracer.start_span(name)
+            
+            if attributes:
+                for key, value in attributes.items():
+                    span.set_attribute(key, value)
+            
+            return span
+        except Exception as e:
+            logger.warning(f"Failed to create span '{name}': {e}")
+            # Return a dummy span as fallback
+            class DummySpan:
+                def __enter__(self):
+                    return self
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    pass
+                def set_attribute(self, key, value):
+                    pass
+                def add_event(self, name, attributes=None):
+                    pass
+                def set_status(self, status):
+                    pass
+                def record_exception(self, exception):
+                    pass
+                def get_span_context(self):
+                    return None
+            return DummySpan()
     
     def add_event(self, name: str, attributes: Optional[Dict[str, Any]] = None):
         """Add an event to the current span."""
