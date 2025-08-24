@@ -280,6 +280,75 @@ async def test_supply_chain_optimizer():
         print("🎯 Testing Complete!")
 
 
+async def test_market_analysis_integration():
+    """Test market analysis integration specifically."""
+    
+    print("\n🔍 Testing Market Analysis Integration...")
+    print("=" * 60)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
+        # Create client configuration
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            streaming=False
+        )
+        
+        # Create client factory
+        factory = ClientFactory(config)
+        
+        # Create a minimal agent card for testing
+        from a2a.client import minimal_agent_card
+        from dotenv import load_dotenv
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Get agent URL from environment or use default
+        agent_url = os.getenv("SUPPLY_CHAIN_AGENT_URL", "http://localhost:9999/")
+        
+        test_card = minimal_agent_card(
+            url=agent_url,
+            transports=["JSONRPC"]
+        )
+        
+        # Create client
+        client = factory.create(test_card)
+        
+        try:
+            # Generate trace context for this test
+            trace_context = generate_trace_context()
+            print(f"🔗 Market Analysis Test Trace Context:")
+            print(f"  Trace ID: {trace_context['trace_id']}")
+            print(f"  Span ID: {trace_context['trace_id']}")
+            print(f"  Traceparent: {trace_context['traceparent']}")
+            print(f"  Tracestate: {trace_context['tracestate']}")
+            
+            # Use the specific phrase for market analysis
+            from a2a.types import Message, Role
+            from a2a.client.helpers import create_text_message_object
+            
+            message = create_text_message_object(
+                role=Role.user, 
+                content="perform market analysis"
+            )
+            
+            print(f"\n📝 Sending message: '{message.parts[0].root.text}'")
+            print("-" * 40)
+            
+            # Send message using the client
+            async for event in client.send_message(message):
+                print("✅ Market Analysis Request Successful!")
+                print(f"Response: {event}")
+                break  # Just get the first response for now
+                
+        except Exception as e:
+            print(f"❌ Error in market analysis test: {e}")
+            import traceback
+            traceback.print_exc()
+
+
 async def test_business_policy_validation():
     """Test business policy validation functionality."""
     
@@ -405,14 +474,64 @@ async def main():
     print("🚀 Supply Chain Optimizer Agent Test Suite")
     print("=" * 60)
     
-    # Test tracing functionality first
-    await test_tracing_functionality()
+    # Define available tests
+    available_tests = {
+        "1": ("Tracing Functionality", test_tracing_functionality),
+        "2": ("Supply Chain Optimizer Agent", test_supply_chain_optimizer),
+        "3": ("Business Policy Validation", test_business_policy_validation),
+        "4": ("Market Analysis Integration", test_market_analysis_integration),
+        "5": ("All Tests", None),  # Special case for all tests
+        "6": ("Quick Tracing Test", test_tracing_functionality),  # Quick option for tracing
+    }
     
-    # Test the agent
-    await test_supply_chain_optimizer()
+    # Display test menu
+    print("\n📋 Available Tests:")
+    print("-" * 30)
+    for key, (name, _) in available_tests.items():
+        if key == "6":
+            print(f"  {key}. {name} (Fast)")
+        else:
+            print(f"  {key}. {name}")
+    print("  q. Quit")
     
-    # Test business policies
-    await test_business_policy_validation()
+    # Get user selection
+    while True:
+        selection = input("\n🎯 Select test to run (1-6, q to quit): ").strip().lower()
+        
+        if selection == "q":
+            print("👋 Goodbye!")
+            return
+        
+        if selection in available_tests:
+            test_name, test_func = available_tests[selection]
+            
+            if selection == "5":  # All tests
+                print(f"\n🚀 Running ALL tests...")
+                print("=" * 60)
+                
+                # Test tracing functionality first
+                await test_tracing_functionality()
+                
+                # Test the agent
+                await test_supply_chain_optimizer()
+                
+                # Test business policies
+                await test_business_policy_validation()
+                
+                # Test market analysis integration
+                await test_market_analysis_integration()
+                
+                print("\n🎯 All tests completed!")
+                break
+                
+            else:  # Single test
+                print(f"\n🚀 Running: {test_name}")
+                print("=" * 60)
+                await test_func()
+                print(f"\n✅ {test_name} completed!")
+                break
+        else:
+            print("❌ Invalid selection. Please choose 1-6 or 'q' to quit.")
 
 
 if __name__ == "__main__":
