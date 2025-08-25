@@ -17,6 +17,35 @@ import httpx
 
 from a2a.client import ClientFactory, ClientConfig
 from a2a.types import TransportProtocol
+from a2a.client.middleware import ClientCallInterceptor, ClientCallContext
+
+# Import tracing functions
+from tracing_config import (
+    span, add_event, set_attribute, initialize_tracing,
+    extract_context_from_headers, inject_context_to_headers
+)
+
+
+class TracingInterceptor(ClientCallInterceptor):
+    """Interceptor that injects trace context into HTTP requests."""
+    
+    def __init__(self, trace_headers: Dict[str, str]):
+        self.trace_headers = trace_headers
+    
+    async def intercept(
+        self,
+        method_name: str,
+        request_payload: dict[str, Any],
+        http_kwargs: dict[str, Any],
+        agent_card: Any | None,
+        context: ClientCallContext | None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Inject trace headers into the HTTP request."""
+        headers = http_kwargs.get('headers', {})
+        headers.update(self.trace_headers)
+        http_kwargs['headers'] = headers
+        print(f"🔗 TracingInterceptor: Injected headers: {self.trace_headers}")
+        return request_payload, http_kwargs
 
 
 def generate_trace_context():
@@ -225,18 +254,40 @@ async def test_supply_chain_optimizer():
         print("-" * 40)
         
         try:
-            # Generate new trace context for this test
-            trace_context = generate_trace_context()
-            print(f"🔗 New Trace Context for Market Analysis Test:")
-            print(f"  Trace ID: {trace_context['trace_id']}")
-            print(f"  Span ID: {trace_context['span_id']}")
-            
-            message = create_text_message_object(role=Role.user, content="perform market analysis for laptop supply chain optimization")
-            
-            async for event in client.send_message(message):
-                print("✅ Success!")
-                print(f"Response: {event}")
-                break
+            # Create a REAL parent span that will be propagated
+            with span("test_client.calling_supply_chain_agent") as parent_span:
+                print(f"🔗 Created Parent Span: {parent_span}")
+                add_event("test_client.calling_supply_chain_agent_started")
+                set_attribute("test.type", "market_analysis_integration")
+                set_attribute("test.client", "test_client")
+                set_attribute("test.target", "supply_chain_agent")
+                
+                # Generate trace context from the current span
+                trace_context = generate_trace_context()
+                print(f"🔗 Generated Trace Context:")
+                print(f"  Trace ID: {trace_context['trace_id']}")
+                print(f"  Span ID: {trace_context['span_id']}")
+                print(f"  Traceparent: {trace_context['traceparent']}")
+                print(f"  Tracestate: {trace_context['tracestate']}")
+                
+                # Create tracing headers
+                tracing_headers = create_tracing_headers(trace_context)
+                print(f"🔗 Created Tracing Headers: {tracing_headers}")
+                
+                # Create tracing interceptor
+                tracing_interceptor = TracingInterceptor(tracing_headers)
+                
+                # Create client with tracing interceptor
+                client = factory.create(test_card, interceptors=[tracing_interceptor])
+                
+                message = create_text_message_object(role=Role.user, content="perform market analysis for laptop supply chain optimization")
+                
+                async for event in client.send_message(message):
+                    print("✅ Success!")
+                    print(f"Response: {event}")
+                    break
+                
+                add_event("test_client.calling_supply_chain_agent_completed")
                 
         except Exception as e:
             print(f"❌ Error: {e}")
@@ -269,23 +320,39 @@ async def test_supply_chain_optimizer():
         print("-" * 40)
         
         try:
-            # Generate a trace context and test propagation
-            trace_context = generate_trace_context()
-            print(f"🔗 Testing Context Propagation:")
-            print(f"  Trace ID: {trace_context['trace_id']}")
-            print(f"  Span ID: {trace_context['span_id']}")
-            
-            # Create headers with tracing context
-            headers = create_tracing_headers(trace_context)
-            print(f"  Headers: {headers}")
-            
-            # Test that the context would be propagated
-            message = create_text_message_object(role=Role.user, content="test tracing context propagation")
-            
-            async for event in client.send_message(message):
-                print("✅ Success! Tracing context should be propagated")
-                print(f"Response: {event}")
-                break
+            # Create a REAL parent span that will be propagated
+            with span("test_client.calling_supply_chain_agent") as parent_span:
+                print(f"🔗 Created Parent Span: {parent_span}")
+                add_event("test_client.calling_supply_chain_agent_started")
+                set_attribute("test.type", "tracing_propagation")
+                set_attribute("test.client", "test_client")
+                set_attribute("test.target", "supply_chain_agent")
+                
+                # Generate trace context from the current span
+                trace_context = generate_trace_context()
+                print(f"🔗 Testing Context Propagation:")
+                print(f"  Trace ID: {trace_context['trace_id']}")
+                print(f"  Span ID: {trace_context['span_id']}")
+                
+                # Create headers with tracing context
+                headers = create_tracing_headers(trace_context)
+                print(f"  Headers: {headers}")
+                
+                # Create tracing interceptor
+                tracing_interceptor = TracingInterceptor(headers)
+                
+                # Create client with tracing interceptor
+                client = factory.create(test_card, interceptors=[tracing_interceptor])
+                
+                # Test that the context would be propagated
+                message = create_text_message_object(role=Role.user, content="test tracing context propagation")
+                
+                async for event in client.send_message(message):
+                    print("✅ Success! Tracing context should be propagated")
+                    print(f"Response: {event}")
+                    break
+                
+                add_event("test_client.calling_supply_chain_agent_completed")
                 
         except Exception as e:
             print(f"❌ Error: {e}")

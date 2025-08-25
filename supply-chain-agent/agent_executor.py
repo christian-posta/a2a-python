@@ -9,10 +9,33 @@ import httpx
 from a2a.client import ClientFactory, ClientConfig
 from a2a.types import TransportProtocol, Message, Role
 from a2a.client.helpers import create_text_message_object
+from a2a.client.middleware import ClientCallInterceptor, ClientCallContext
 from tracing_config import (
     span, add_event, set_attribute, extract_context_from_headers, 
     inject_context_to_headers, initialize_tracing
 )
+
+
+class TracingInterceptor(ClientCallInterceptor):
+    """Interceptor that injects trace context into HTTP requests."""
+    
+    def __init__(self, trace_headers: Dict[str, str]):
+        self.trace_headers = trace_headers
+    
+    async def intercept(
+        self,
+        method_name: str,
+        request_payload: dict[str, Any],
+        http_kwargs: dict[str, Any],
+        agent_card: Any | None,
+        context: ClientCallContext | None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Inject trace headers into the HTTP request."""
+        headers = http_kwargs.get('headers', {})
+        headers.update(self.trace_headers)
+        http_kwargs['headers'] = headers
+        print(f"🔗 TracingInterceptor: Injected headers: {self.trace_headers}")
+        return request_payload, http_kwargs
 
 
 class SupplyChainOptimizerAgent:
@@ -97,12 +120,12 @@ class SupplyChainOptimizerAgent:
         
         return self.market_analysis_client
 
-    async def _get_market_analysis(self, request_text: str) -> str:
+    async def _get_market_analysis(self, request_text: str, trace_context: Any) -> str:
         """Get market analysis from the market analysis agent."""
         with span("supply_chain_agent.get_market_analysis", {
             "request.text": request_text[:100],  # Truncate for attribute limits
             "market_analysis.requested": True
-        }) as span_obj:
+        }, parent_context=trace_context) as span_obj:
             
             try:
                 add_event("market_analysis_requested", {"request_text": request_text})
@@ -166,12 +189,12 @@ class SupplyChainOptimizerAgent:
                 traceback.print_exc()
                 return "No market analysis provided"
 
-    async def invoke(self, request_text: str = "") -> str:
+    async def invoke(self, request_text: str = "", trace_context: Any = None) -> str:
         """Main entry point for supply chain optimization requests."""
         with span("supply_chain_agent.invoke", {
             "request.text": request_text[:100],
             "request.has_content": bool(request_text)
-        }) as span_obj:
+        }, parent_context=trace_context) as span_obj:
             
             if not request_text:
                 request_text = "optimize laptop supply chain"
@@ -192,7 +215,7 @@ class SupplyChainOptimizerAgent:
                 add_event("market_analysis_requested")
                 set_attribute("market_analysis.requested", True)
                 print(f"🔍 Market analysis requested for: {request_text}")
-                market_analysis = await self._get_market_analysis(request_text)
+                market_analysis = await self._get_market_analysis(request_text, trace_context)
                 print(f"📊 Market analysis result: {market_analysis[:100]}...")
             else:
                 add_event("market_analysis_not_requested")
