@@ -284,7 +284,7 @@ class SupplyChainOptimizerAgent:
             add_event("inventory_recommendation_generated")
         
         # Cost optimization recommendation
-        if "optimization_goal" == "cost_optimization":
+        if analysis.get("optimization_goal") == "cost_optimization":
             recommendations.append({
                 "type": "cost_optimization",
                 "priority": "medium",
@@ -379,34 +379,105 @@ class SupplyChainOptimizerExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
-        # Extract trace context from headers if available
-        trace_context = None
+        # Debug: Inspect the RequestContext object
+        print(f"🔍 DEBUG: RequestContext type: {type(context)}")
+        print(f"🔍 DEBUG: RequestContext dir: {dir(context)}")
+        print(f"🔍 DEBUG: RequestContext attributes: {[attr for attr in dir(context) if not attr.startswith('_')]}")
+        
+        # Check for headers in different possible locations
+        headers = None
         if hasattr(context, 'headers'):
             headers = context.headers
+            print(f"✅ Found headers in context.headers: {headers}")
+        elif hasattr(context, 'call_context') and hasattr(context.call_context, 'state'):
+            # Check if headers are in call_context.state (this is where A2A stores them)
+            state = context.call_context.state
+            if 'headers' in state:
+                headers = state['headers']
+                print(f"✅ Found headers in context.call_context.state['headers']: {headers}")
+            else:
+                print(f"❌ No 'headers' key in call_context.state")
+                print(f"🔍 Available state keys: {list(state.keys())}")
+        elif hasattr(context, 'metadata'):
+            metadata = context.metadata
+            print(f"✅ Found metadata: {metadata}")
+            # Check if trace headers are in metadata
+            if metadata and isinstance(metadata, dict):
+                trace_headers = {}
+                for key, value in metadata.items():
+                    if key.lower() in ['traceparent', 'tracestate', 'trace-context']:
+                        trace_headers[key] = value
+                if trace_headers:
+                    print(f"✅ Found trace headers in metadata: {trace_headers}")
+                    headers = trace_headers
+                else:
+                    print(f"❌ No trace headers found in metadata")
+                    # Let's see what's actually in metadata
+                    print(f"🔍 Metadata keys: {list(metadata.keys())}")
+            else:
+                print(f"❌ Metadata is not a dict: {type(metadata)}")
+        elif hasattr(context, 'request') and hasattr(context.request, 'headers'):
+            headers = context.request.headers
+            print(f"✅ Found headers in context.request.headers: {headers}")
+        else:
+            print(f"❌ No headers found in any expected location")
+            # Let's see what we do have
+            if hasattr(context, 'request'):
+                print(f"🔍 context.request type: {type(context.request)}")
+                print(f"🔍 context.request dir: {dir(context.request)}")
+                if hasattr(context.request, 'metadata'):
+                    print(f"🔍 context.request.metadata: {context.request.metadata}")
+            if hasattr(context, 'call_context'):
+                print(f"🔍 context.call_context type: {type(context.call_context)}")
+                print(f"🔍 context.call_context dir: {dir(context.call_context)}")
+                if hasattr(context.call_context, 'state'):
+                    print(f"🔍 context.call_context.state: {context.call_context.state}")
+            if hasattr(context, 'metadata'):
+                print(f"🔍 context.metadata type: {type(context.metadata)}")
+                print(f"🔍 context.metadata dir: {dir(context.metadata)}")
+                print(f"🔍 context.metadata content: {context.metadata}")
+        
+        # Extract trace context from headers if available
+        trace_context = None
+        if headers:
+            print(f"🔍 DEBUG: Attempting to extract trace context from headers: {headers}")
+            set_attribute("debug.headers_received", str(headers))
+            
             trace_context = extract_context_from_headers(headers)
+            print(f"🔍 DEBUG: Extracted trace context: {trace_context}")
+            set_attribute("debug.trace_context_extracted", str(trace_context))
+            
             if trace_context:
                 add_event("trace_context_extracted_from_headers")
                 set_attribute("tracing.context_extracted", True)
-        
-        # Create span with or without parent context
-        if trace_context:
-            # Case 1: With tracing headers - create child span
-            with span("supply_chain_agent.executor.execute", parent_context=trace_context) as span_obj:
-                await self._execute_with_tracing(context, event_queue, span_obj)
+                print(f"✅ Trace context successfully extracted from headers")
+            else:
+                add_event("trace_context_extraction_failed")
+                set_attribute("tracing.context_extracted", False)
+                print(f"❌ Failed to extract trace context from headers")
         else:
-            # Case 2: No tracing headers - create root span
+            print(f"❌ No headers available for trace context extraction")
+            set_attribute("tracing.context_extracted", False)
+        
+        if trace_context:
+            with span("supply_chain_agent.executor.execute", parent_context=trace_context) as span_obj:
+                print(f"🔗 Creating child span with parent context")
+                await self._execute_with_tracing(context, event_queue, span_obj, trace_context)
+        else:
             with span("supply_chain_agent.executor.execute") as span_obj:
+                print(f"🔗 Creating root span (no parent context)")
                 add_event("no_trace_context_provided")
                 set_attribute("tracing.context_extracted", False)
-                await self._execute_with_tracing(context, event_queue, span_obj)
+                await self._execute_with_tracing(context, event_queue, span_obj, trace_context)
     
     async def _execute_with_tracing(
         self,
         context: RequestContext,
         event_queue: EventQueue,
-        span_obj
+        span_obj,
+        trace_context: Any
     ):
-        """Execute the agent logic with tracing support."""
+        """Execute with tracing support."""
         # Extract request text from context if available
         request_text = ""
         print(f"🔍 Executor: Context type: {type(context)}")
@@ -455,6 +526,21 @@ class SupplyChainOptimizerExecutor(AgentExecutor):
                 request_text = config.user_input
                 print(f"🔍 Executor: User input from config: {request_text}")
         
+        # Method 5: Try to get from request.text and request.content (new approach)
+        if not request_text and hasattr(context, 'request') and context.request:
+            if hasattr(context.request, 'text'):
+                request_text = context.request.text
+                print(f"🔍 Executor: Found text in context.request.text: {request_text}")
+            elif hasattr(context.request, 'content'):
+                # Handle different content formats
+                content = context.request.content
+                if isinstance(content, str):
+                    request_text = content
+                    print(f"🔍 Executor: Found string content in context.request.content: {request_text}")
+                elif isinstance(content, dict) and 'content' in content:
+                    request_text = content['content']
+                    print(f"🔍 Executor: Found dict content in context.request.content: {request_text}")
+        
         if not request_text:
             print(f"🔍 Executor: No request found in context, using default")
             request_text = "optimize laptop supply chain"  # Default fallback
@@ -464,11 +550,15 @@ class SupplyChainOptimizerExecutor(AgentExecutor):
         add_event("executor_request_extracted", {"request_text": request_text})
         print(f"🔍 Executor: Final request_text: '{request_text}'")
         
-        result = await self.agent.invoke(request_text)
-        add_event("agent_invoke_completed", {"result_length": len(result)})
-        
-        await event_queue.enqueue_event(new_agent_text_message(result))
-        add_event("response_enqueued")
+        try:
+            result = await self.agent.invoke(request_text, trace_context)
+            add_event("agent_invoke_successful")
+            await event_queue.enqueue_event(new_agent_text_message(result))
+        except Exception as e:
+            error_message = f"Error during supply chain optimization: {str(e)}"
+            add_event("agent_invoke_failed", {"error": str(e)})
+            set_attribute("error.message", str(e))
+            await event_queue.enqueue_event(new_agent_text_message(error_message))
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue

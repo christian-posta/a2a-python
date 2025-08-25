@@ -177,21 +177,33 @@ class TracingConfig:
     
     def extract_context_from_headers(self, headers: Dict[str, str]) -> Optional[trace.SpanContext]:
         """Extract trace context from HTTP headers."""
+        if not self._initialized or not self.propagator:
+            return None
+        
         try:
-            context = self.propagator.extract(carrier=headers, context=trace.get_current_span().get_span_context())
+            # Use the correct OpenTelemetry API - extract from carrier with proper context
+            from opentelemetry.context import Context
+            context = self.propagator.extract(
+                carrier=headers, 
+                context=Context()
+            )
             return context
         except Exception as e:
             logger.warning(f"Failed to extract trace context from headers: {e}")
             return None
     
-    def inject_context_to_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
+    def inject_context_to_headers(self, context: trace.SpanContext) -> Dict[str, str]:
         """Inject trace context into HTTP headers."""
+        if not self._initialized or not self.propagator:
+            return {}
+        
         try:
-            self.propagator.inject(carrier=headers, context=trace.get_current_span().get_span_context())
+            headers = {}
+            self.propagator.inject(context, carrier=headers, setter=dict.__setitem__)
             return headers
         except Exception as e:
             logger.warning(f"Failed to inject trace context to headers: {e}")
-            return headers
+            return {}
     
     @contextmanager
     def span(self, name: str, attributes: Optional[Dict[str, Any]] = None, 
@@ -213,19 +225,45 @@ class TracingConfig:
         
         tracer = self.get_tracer()
         
-        # For now, let's create spans without parent context to avoid the error
-        # We can add proper context handling later once we understand the issue better
-        with tracer.start_as_current_span(name) as span:
-            if attributes:
-                for key, value in attributes.items():
-                    span.set_attribute(key, value)
-            
+        # Handle parent context if provided
+        if parent_context:
             try:
-                yield span
+                # Create span with parent context
+                with tracer.start_as_current_span(name, context=parent_context) as span:
+                    if attributes:
+                        for key, value in attributes.items():
+                            span.set_attribute(key, value)
+                    try:
+                        yield span
+                    except Exception as e:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
+                        raise
             except Exception as e:
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                raise
+                logging.warning(f"Failed to create span with parent context: {e}")
+                # Fallback to span without parent context
+                with tracer.start_as_current_span(name) as span:
+                    if attributes:
+                        for key, value in attributes.items():
+                            span.set_attribute(key, value)
+                    try:
+                        yield span
+                    except Exception as e:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
+                        raise
+        else:
+            # Create span without parent context
+            with tracer.start_as_current_span(name) as span:
+                if attributes:
+                    for key, value in attributes.items():
+                        span.set_attribute(key, value)
+                try:
+                    yield span
+                except Exception as e:
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    raise
     
     def create_span(self, name: str, attributes: Optional[Dict[str, Any]] = None,
                     parent_context: Optional[trace.SpanContext] = None) -> trace.Span:
@@ -291,7 +329,7 @@ class TracingConfig:
             return
         
         current_span = trace.get_current_span()
-        if current_span.is_recording():
+        if current_span and current_span.is_recording():
             current_span.add_event(name, attributes or {})
     
     def set_attribute(self, key: str, value: Any):
@@ -300,7 +338,7 @@ class TracingConfig:
             return
         
         current_span = trace.get_current_span()
-        if current_span.is_recording():
+        if current_span and current_span.is_recording():
             current_span.set_attribute(key, value)
     
     def shutdown(self):
@@ -341,9 +379,9 @@ def extract_context_from_headers(headers: Dict[str, str]) -> Optional[trace.Span
     """Extract trace context from HTTP headers using the global tracing configuration."""
     return tracing_config.extract_context_from_headers(headers)
 
-def inject_context_to_headers(headers: Dict[str, str]) -> Dict[str, str]:
+def inject_context_to_headers(context: trace.SpanContext) -> Dict[str, str]:
     """Inject trace context into HTTP headers using the global tracing configuration."""
-    return tracing_config.inject_context_to_headers(headers)
+    return tracing_config.inject_context_to_headers(context)
 
 def add_event(name: str, attributes: Optional[Dict[str, Any]] = None):
     """Add an event to the current span using the global tracing configuration."""
