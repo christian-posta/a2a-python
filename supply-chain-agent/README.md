@@ -9,6 +9,11 @@ A demonstration A2A agent that showcases enterprise supply chain optimization ca
 * you need to have jaeger running (docker compose up)
 * you can test with a2a-inspector or the test files in this folder
 * `uv run test_client.py`
+* you can get the agent to call the market analysis with prompt:
+
+> perform market analysis
+
+
 
 ## Overview
 

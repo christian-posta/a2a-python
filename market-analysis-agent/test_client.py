@@ -307,10 +307,12 @@ async def test_tracing_context_propagation():
         
         try:
             # Create a REAL parent span that will be propagated
-            with span("test_client.parent_span") as parent_span:
+            with span("test_client.calling_market_analysis_agent") as parent_span:
                 print(f"🔗 Created Parent Span: {parent_span}")
-                add_event("test_client.parent_span_started")
+                add_event("test_client.calling_market_analysis_agent_started")
                 set_attribute("test.type", "tracing_propagation")
+                set_attribute("test.client", "test_client")
+                set_attribute("test.target", "market_analysis_agent")
                 
                 # Generate trace context from the current span
                 trace_context = generate_trace_context()
@@ -347,7 +349,7 @@ async def test_tracing_context_propagation():
                     print(f"Response: {event}")
                     break
                 
-                add_event("test_client.parent_span_completed")
+                add_event("test_client.calling_market_analysis_agent_completed")
         
         except Exception as e:
             print(f"❌ Error: {e}")

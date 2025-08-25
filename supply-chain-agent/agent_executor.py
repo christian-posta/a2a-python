@@ -44,8 +44,28 @@ class SupplyChainOptimizerAgent:
                 add_event("creating_market_analysis_client")
                 set_attribute("market_analysis.url", self.market_analysis_url)
                 
-                # Create httpx client for the market analysis agent
-                httpx_client = httpx.AsyncClient()
+                # Create httpx client for the market analysis agent with extended timeout
+                # Timeouts can be configured via environment variables
+                connect_timeout = float(os.getenv("MARKET_ANALYSIS_CONNECT_TIMEOUT", "30.0"))
+                read_timeout = float(os.getenv("MARKET_ANALYSIS_READ_TIMEOUT", "120.0"))
+                write_timeout = float(os.getenv("MARKET_ANALYSIS_WRITE_TIMEOUT", "30.0"))
+                pool_timeout = float(os.getenv("MARKET_ANALYSIS_POOL_TIMEOUT", "30.0"))
+                
+                httpx_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(
+                        connect=connect_timeout,      # Connection timeout
+                        read=read_timeout,           # Read timeout (for long-running operations)
+                        write=write_timeout,         # Write timeout
+                        pool=pool_timeout            # Pool timeout
+                    )
+                )
+                
+                # Log the configured timeouts
+                print(f"⏱️  Market Analysis Client Timeouts:")
+                print(f"   Connect: {connect_timeout}s")
+                print(f"   Read: {read_timeout}s")
+                print(f"   Write: {write_timeout}s")
+                print(f"   Pool: {pool_timeout}s")
                 
                 # Create client configuration
                 config = ClientConfig(
