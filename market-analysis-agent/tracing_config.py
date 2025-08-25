@@ -156,7 +156,8 @@ class TracingConfig:
         return self.tracer
     
     @contextmanager
-    def span(self, name: str, attributes: Optional[Dict[str, Any]] = None):
+    def span(self, name: str, attributes: Optional[Dict[str, Any]] = None, 
+             parent_context: Optional[trace.SpanContext] = None):
         """Create a span context manager."""
         if not self._initialized:
             self.initialize()
@@ -167,16 +168,46 @@ class TracingConfig:
             return
         
         tracer = self.get_tracer()
-        with tracer.start_as_current_span(name) as span:
-            if attributes:
-                for key, value in attributes.items():
-                    span.set_attribute(key, value)
+        
+        # Handle parent context if provided
+        if parent_context:
             try:
-                yield span
+                # Create span with parent context
+                with tracer.start_as_current_span(name, context=parent_context) as span:
+                    if attributes:
+                        for key, value in attributes.items():
+                            span.set_attribute(key, value)
+                    try:
+                        yield span
+                    except Exception as e:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
+                        raise
             except Exception as e:
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                raise
+                logging.warning(f"Failed to create span with parent context: {e}")
+                # Fallback to span without parent context
+                with tracer.start_as_current_span(name) as span:
+                    if attributes:
+                        for key, value in attributes.items():
+                            span.set_attribute(key, value)
+                    try:
+                        yield span
+                    except Exception as e:
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        span.record_exception(e)
+                        raise
+        else:
+            # Create span without parent context
+            with tracer.start_as_current_span(name) as span:
+                if attributes:
+                    for key, value in attributes.items():
+                        span.set_attribute(key, value)
+                try:
+                    yield span
+                except Exception as e:
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    raise
     
     def add_event(self, name: str, attributes: Optional[Dict[str, Any]] = None):
         """Add an event to the current span."""
@@ -202,7 +233,13 @@ class TracingConfig:
             return None
         
         try:
-            return self.propagator.extract(carrier=headers, getter=dict.get)
+            # Use the correct OpenTelemetry API - extract from carrier with proper context
+            from opentelemetry.context import Context
+            context = self.propagator.extract(
+                carrier=headers, 
+                context=Context()
+            )
+            return context
         except Exception as e:
             logging.warning(f"Failed to extract trace context: {e}")
             return None
@@ -230,9 +267,9 @@ def initialize_tracing(service_name: str = "market-analysis-agent",
     """Initialize tracing configuration."""
     _tracing_config.initialize(service_name, jaeger_host, jaeger_port, enable_console_exporter)
 
-def span(name: str, attributes: Optional[Dict[str, Any]] = None):
+def span(name: str, attributes: Optional[Dict[str, Any]] = None, parent_context: Optional[trace.SpanContext] = None):
     """Create a span context manager."""
-    return _tracing_config.span(name, attributes)
+    return _tracing_config.span(name, attributes, parent_context)
 
 def add_event(name: str, attributes: Optional[Dict[str, Any]] = None):
     """Add an event to the current span."""

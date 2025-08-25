@@ -2,6 +2,14 @@
 
 A demonstration A2A agent that showcases enterprise supply chain optimization capabilities with built-in business policies and compliance rules.
 
+## Quick Top Level Notes
+
+* this shows agent to agent communication and agent to mcp
+* you need to start the agentgateway
+* you need to have jaeger running (docker compose up)
+* you can test with a2a-inspector or the test files in this folder
+* `uv run test_client.py`
+
 ## Overview
 
 The Supply Chain Optimizer Agent is a high-level orchestration agent that:

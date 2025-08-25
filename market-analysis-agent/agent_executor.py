@@ -53,7 +53,7 @@ class MarketAnalysisAgent:
 
     async def invoke(self, request_text: str = "") -> str:
         """Main entry point for market analysis requests."""
-        with span("market_analysis_agent.invoke", {
+        with span("market_analysis_agent.invoke", attributes={
             "request.text": request_text[:100],
             "request.has_content": bool(request_text)
         }) as span_obj:
@@ -224,20 +224,93 @@ class MarketAnalysisAgentExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
-        # Extract trace context from headers if available
-        trace_context = None
+        # Debug: Inspect the RequestContext object
+        print(f"🔍 DEBUG: RequestContext type: {type(context)}")
+        print(f"🔍 DEBUG: RequestContext dir: {dir(context)}")
+        print(f"🔍 DEBUG: RequestContext attributes: {[attr for attr in dir(context) if not attr.startswith('_')]}")
+        
+        # Check for headers in different possible locations
+        headers = None
         if hasattr(context, 'headers'):
             headers = context.headers
+            print(f"✅ Found headers in context.headers: {headers}")
+        elif hasattr(context, 'call_context') and hasattr(context.call_context, 'state'):
+            # Check if headers are in call_context.state (this is where A2A stores them)
+            state = context.call_context.state
+            if 'headers' in state:
+                headers = state['headers']
+                print(f"✅ Found headers in context.call_context.state['headers']: {headers}")
+            else:
+                print(f"❌ No 'headers' key in call_context.state")
+                print(f"🔍 Available state keys: {list(state.keys())}")
+        elif hasattr(context, 'metadata'):
+            metadata = context.metadata
+            print(f"✅ Found metadata: {metadata}")
+            # Check if trace headers are in metadata
+            if metadata and isinstance(metadata, dict):
+                trace_headers = {}
+                for key, value in metadata.items():
+                    if key.lower() in ['traceparent', 'tracestate', 'trace-context']:
+                        trace_headers[key] = value
+                if trace_headers:
+                    print(f"✅ Found trace headers in metadata: {trace_headers}")
+                    headers = trace_headers
+                else:
+                    print(f"❌ No trace headers found in metadata")
+                    # Let's see what's actually in metadata
+                    print(f"🔍 Metadata keys: {list(metadata.keys())}")
+            else:
+                print(f"❌ Metadata is not a dict: {type(metadata)}")
+        elif hasattr(context, 'request') and hasattr(context.request, 'headers'):
+            headers = context.request.headers
+            print(f"✅ Found headers in context.request.headers: {headers}")
+        else:
+            print(f"❌ No headers found in any expected location")
+            # Let's see what we do have
+            if hasattr(context, 'request'):
+                print(f"🔍 context.request type: {type(context.request)}")
+                print(f"🔍 context.request dir: {dir(context.request)}")
+                if hasattr(context.request, 'metadata'):
+                    print(f"🔍 context.request.metadata: {context.request.metadata}")
+            if hasattr(context, 'call_context'):
+                print(f"🔍 context.call_context type: {type(context.call_context)}")
+                print(f"🔍 context.call_context dir: {dir(context.call_context)}")
+                if hasattr(context.call_context, 'state'):
+                    print(f"🔍 context.call_context.state: {context.call_context.state}")
+            if hasattr(context, 'metadata'):
+                print(f"🔍 context.metadata type: {type(context.metadata)}")
+                print(f"🔍 context.metadata dir: {dir(context.metadata)}")
+                print(f"🔍 context.metadata content: {context.metadata}")
+        
+        # Extract trace context from headers if available
+        trace_context = None
+        if headers:
+            print(f"🔍 DEBUG: Attempting to extract trace context from headers: {headers}")
+            set_attribute("debug.headers_received", str(headers))
+            
             trace_context = extract_context_from_headers(headers)
+            print(f"🔍 DEBUG: Extracted trace context: {trace_context}")
+            set_attribute("debug.trace_context_extracted", str(trace_context))
+            
             if trace_context:
                 add_event("trace_context_extracted_from_headers")
                 set_attribute("tracing.context_extracted", True)
+                print(f"✅ Trace context successfully extracted from headers")
+            else:
+                add_event("trace_context_extraction_failed")
+                set_attribute("tracing.context_extracted", False)
+                print(f"❌ Failed to extract trace context from headers")
+        else:
+            print(f"❌ No headers available for trace context extraction")
+            set_attribute("tracing.context_extracted", False)
         
         if trace_context:
             with span("market_analysis_agent.executor.execute", parent_context=trace_context) as span_obj:
+                print(f"🔗 Creating child span with parent context")
                 await self._execute_with_tracing(context, event_queue, span_obj)
         else:
             with span("market_analysis_agent.executor.execute") as span_obj:
+                print(f"🔗 Creating root span (no parent context)")
                 add_event("no_trace_context_provided")
                 set_attribute("tracing.context_extracted", False)
                 await self._execute_with_tracing(context, event_queue, span_obj)
@@ -302,7 +375,7 @@ class MarketAnalysisAgentCore:
         Returns:
             Comprehensive market analysis results with recommendations
         """
-        with span("market_analysis_agent.process_request", {
+        with span("market_analysis_agent.process_request", attributes={
             "request.type": delegation_request.get("type"),
             "request.timeframe_months": delegation_request.get("timeframe_months"),
             "request.departments_count": len(delegation_request.get("departments", []))

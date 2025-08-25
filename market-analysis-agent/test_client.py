@@ -10,14 +10,37 @@ from dotenv import load_dotenv
 
 from a2a.client import ClientFactory, ClientConfig
 from a2a.types import TransportProtocol
+from a2a.client.middleware import ClientCallInterceptor, ClientCallContext
 
 # Import tracing functions
 from tracing_config import (
-    span, add_event, set_attribute, initialize_tracing
+    span, add_event, set_attribute, initialize_tracing,
+    extract_context_from_headers, inject_context_to_headers
 )
 
 # Load environment variables
 load_dotenv()
+
+class TracingInterceptor(ClientCallInterceptor):
+    """Interceptor that injects trace context into HTTP requests."""
+    
+    def __init__(self, trace_headers: Dict[str, str]):
+        self.trace_headers = trace_headers
+    
+    async def intercept(
+        self,
+        method_name: str,
+        request_payload: dict[str, Any],
+        http_kwargs: dict[str, Any],
+        agent_card: Any | None,
+        context: ClientCallContext | None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Inject trace headers into the HTTP request."""
+        headers = http_kwargs.get('headers', {})
+        headers.update(self.trace_headers)
+        http_kwargs['headers'] = headers
+        print(f"🔗 TracingInterceptor: Injected headers: {self.trace_headers}")
+        return request_payload, http_kwargs
 
 def generate_trace_context():
     """Generate a new trace context for testing."""
@@ -92,8 +115,10 @@ async def test_tracing_functionality():
         traceback.print_exc()
         return False
 
-async def test_market_analysis_agent():
-    """Test the Market Analysis Agent."""
+async def test_basic_inventory_analysis():
+    """Test basic inventory demand analysis."""
+    print("📊 Test: Basic Inventory Demand Analysis")
+    print("-" * 40)
     
     # Create client with proper configuration
     async with httpx.AsyncClient() as httpx_client:
@@ -114,15 +139,8 @@ async def test_market_analysis_agent():
             transports=["JSONRPC"]
         )
         
-        # Create client
+        # Create a basic client
         client = factory.create(test_card)
-        
-        print("🔍 Testing Market Analysis Agent...")
-        print("=" * 60)
-        
-        # Test 1: Basic inventory demand analysis
-        print("\n📊 Test 1: Inventory Demand Analysis")
-        print("-" * 40)
         
         try:
             from a2a.types import Message, Role
@@ -139,12 +157,38 @@ async def test_market_analysis_agent():
             print(f"❌ Error: {e}")
             import traceback
             traceback.print_exc()
+
+async def test_market_trend_forecasting():
+    """Test market trend forecasting."""
+    print("📈 Test: Market Trend Forecasting")
+    print("-" * 40)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
+        # Create client configuration
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            streaming=False
+        )
         
-        # Test 2: Market trend forecasting
-        print("\n📈 Test 2: Market Trend Forecasting")
-        print("-" * 40)
+        # Create client factory
+        factory = ClientFactory(config)
+        
+        # Create a minimal agent card for testing
+        from a2a.client import minimal_agent_card
+        test_card = minimal_agent_card(
+            url="http://localhost:9998/",
+            transports=["JSONRPC"]
+        )
+        
+        # Create a basic client
+        client = factory.create(test_card)
         
         try:
+            from a2a.types import Message, Role
+            from a2a.client.helpers import create_text_message_object
+            
             message = create_text_message_object(role=Role.user, content="forecast laptop market trends and pricing for the next 6 months")
             
             async for event in client.send_message(message):
@@ -154,12 +198,38 @@ async def test_market_analysis_agent():
                 
         except Exception as e:
             print(f"❌ Error: {e}")
+
+async def test_demand_pattern_modeling():
+    """Test demand pattern modeling."""
+    print("👥 Test: Demand Pattern Modeling")
+    print("-" * 40)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
+        # Create client configuration
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            streaming=False
+        )
         
-        # Test 3: Demand pattern modeling
-        print("\n👥 Test 3: Demand Pattern Modeling")
-        print("-" * 40)
+        # Create client factory
+        factory = ClientFactory(config)
+        
+        # Create a minimal agent card for testing
+        from a2a.client import minimal_agent_card
+        test_card = minimal_agent_card(
+            url="http://localhost:9998/",
+            transports=["JSONRPC"]
+        )
+        
+        # Create a basic client
+        client = factory.create(test_card)
         
         try:
+            from a2a.types import Message, Role
+            from a2a.client.helpers import create_text_message_object
+            
             message = create_text_message_object(role=Role.user, content="model laptop demand patterns for engineering and sales teams over the next 6 months")
             
             async for event in client.send_message(message):
@@ -169,12 +239,38 @@ async def test_market_analysis_agent():
                 
         except Exception as e:
             print(f"❌ Error: {e}")
+
+async def test_comprehensive_analysis():
+    """Test comprehensive market analysis."""
+    print("🔍 Test: Comprehensive Market Analysis")
+    print("-" * 40)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
+        # Create client configuration
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            streaming=False
+        )
         
-        # Test 4: Comprehensive analysis
-        print("\n🔍 Test 4: Comprehensive Market Analysis")
-        print("-" * 40)
+        # Create client factory
+        factory = ClientFactory(config)
+        
+        # Create a minimal agent card for testing
+        from a2a.client import minimal_agent_card
+        test_card = minimal_agent_card(
+            url="http://localhost:9998/",
+            transports=["JSONRPC"]
+        )
+        
+        # Create a basic client
+        client = factory.create(test_card)
         
         try:
+            from a2a.types import Message, Role
+            from a2a.client.helpers import create_text_message_object
+            
             message = create_text_message_object(role=Role.user, content="provide a comprehensive market analysis including inventory, trends, and demand patterns")
             
             async for event in client.send_message(message):
@@ -184,43 +280,87 @@ async def test_market_analysis_agent():
                 
         except Exception as e:
             print(f"❌ Error: {e}")
+
+async def test_tracing_context_propagation():
+    """Test tracing context propagation."""
+    print("🔗 Test: Tracing Context Propagation")
+    print("-" * 40)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
+        # Create client configuration
+        config = ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            streaming=False
+        )
         
-        # Test 5: Tracing Context Propagation Test
-        print("\n🔗 Test 5: Tracing Context Propagation Test")
-        print("-" * 40)
+        # Create client factory
+        factory = ClientFactory(config)
+        
+        # Create a minimal agent card for testing
+        from a2a.client import minimal_agent_card
+        test_card = minimal_agent_card(
+            url="http://localhost:9998/",
+            transports=["JSONRPC"]
+        )
         
         try:
-            # Generate trace context
-            trace_context = generate_trace_context()
-            print(f"🔗 Generated Trace Context:")
-            print(f"  Trace ID: {trace_context['trace_id']}")
-            print(f"  Span ID: {trace_context['span_id']}")
-            print(f"  Traceparent: {trace_context['traceparent']}")
-            print(f"  Tracestate: {trace_context['tracestate']}")
-            
-            # Create message with tracing context
-            message = create_text_message_object(
-                role=Role.user, 
-                content="perform market analysis with tracing context"
-            )
-            
-            print(f"\n📝 Sending message: '{message.parts[0].root.text}'")
-            print("-" * 40)
-            
-            async for event in client.send_message(message):
-                print("✅ Success!")
-                print(f"Response: {event}")
-                break
+            # Create a REAL parent span that will be propagated
+            with span("test_client.parent_span") as parent_span:
+                print(f"🔗 Created Parent Span: {parent_span}")
+                add_event("test_client.parent_span_started")
+                set_attribute("test.type", "tracing_propagation")
                 
+                # Generate trace context from the current span
+                trace_context = generate_trace_context()
+                print(f"🔗 Generated Trace Context:")
+                print(f"  Trace ID: {trace_context['trace_id']}")
+                print(f"  Span ID: {trace_context['span_id']}")
+                print(f"  Traceparent: {trace_context['traceparent']}")
+                print(f"  Tracestate: {trace_context['tracestate']}")
+                
+                # Create tracing headers
+                tracing_headers = create_tracing_headers(trace_context)
+                print(f"🔗 Created Tracing Headers: {tracing_headers}")
+                
+                # Create tracing interceptor
+                tracing_interceptor = TracingInterceptor(tracing_headers)
+                
+                # Create client with tracing interceptor
+                client = factory.create(test_card, interceptors=[tracing_interceptor])
+                
+                # Create message with tracing context
+                from a2a.types import Message, Role
+                from a2a.client.helpers import create_text_message_object
+                
+                message = create_text_message_object(
+                    role=Role.user, 
+                    content="perform market analysis with tracing context"
+                )
+                
+                print(f"\n📝 Sending message: '{message.parts[0].root.text}'")
+                print("-" * 40)
+                
+                async for event in client.send_message(message):
+                    print("✅ Success!")
+                    print(f"Response: {event}")
+                    break
+                
+                add_event("test_client.parent_span_completed")
+        
         except Exception as e:
             print(f"❌ Error: {e}")
             import traceback
             traceback.print_exc()
-        
-        # Test 5: Agent capabilities
-        print("\n🔍 Test 5: Agent Capabilities")
-        print("-" * 40)
-        
+
+async def test_agent_capabilities():
+    """Test agent capabilities."""
+    print("🔍 Test: Agent Capabilities")
+    print("-" * 40)
+    
+    # Create client with proper configuration
+    async with httpx.AsyncClient() as httpx_client:
         try:
             # Get agent card from the actual server
             from a2a.client import A2ACardResolver
@@ -238,50 +378,70 @@ async def test_market_analysis_agent():
                 
         except Exception as e:
             print(f"❌ Error: {e}")
-        
-        print("\n" + "=" * 60)
-        print("🎯 Testing Complete!")
-        return True
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+async def test_market_analysis_agent():
+    """Test the Market Analysis Agent with all test cases."""
+    print("🔍 Testing Market Analysis Agent...")
+    print("=" * 60)
+    
+    # Run all individual tests
+    await test_basic_inventory_analysis()
+    await test_market_trend_forecasting()
+    await test_demand_pattern_modeling()
+    await test_comprehensive_analysis()
+    await test_tracing_context_propagation()
+    await test_agent_capabilities()
+    
+    print("\n" + "=" * 60)
+    print("🎯 All Market Analysis Agent Tests Complete!")
+    return True
 
 async def main():
     """Main test function."""
     print("🚀 Market Analysis Agent Test Suite")
     print("=" * 60)
     
-    # Test tracing functionality first
-    tracing_success = await test_tracing_functionality()
+    # Define available tests
+    available_tests = {
+        "1": ("Tracing Functionality", test_tracing_functionality),
+        "2": ("Basic Inventory Analysis", test_basic_inventory_analysis),
+        "3": ("Market Trend Forecasting", test_market_trend_forecasting),
+        "4": ("Demand Pattern Modeling", test_demand_pattern_modeling),
+        "5": ("Comprehensive Analysis", test_comprehensive_analysis),
+        "6": ("Tracing Context Propagation", test_tracing_context_propagation),
+        "7": ("Agent Capabilities", test_agent_capabilities),
+        "8": ("All Tests", test_market_analysis_agent),
+        "9": ("Quick Tracing Test", test_tracing_functionality),  # Quick option for tracing
+    }
     
-    if tracing_success:
-        print("\n✅ Tracing functionality test completed successfully!")
-    else:
-        print("\n❌ Tracing functionality test failed!")
+    # Display test menu
+    print("\n📋 Available Tests:")
+    print("-" * 30)
+    for key, (name, _) in available_tests.items():
+        if key == "9":
+            print(f"  {key}. {name} (Fast)")
+        else:
+            print(f"  {key}. {name}")
+    print("  q. Quit")
     
-    print("\n" + "=" * 60)
-    
-    # Test the agent
-    await test_market_analysis_agent()
+    # Get user selection
+    while True:
+        selection = input("\n🎯 Select test to run (1-9, q to quit): ").strip().lower()
+        
+        if selection == "q":
+            print("👋 Goodbye!")
+            return
+        
+        if selection in available_tests:
+            test_name, test_func = available_tests[selection]
+            
+            print(f"\n🚀 Running: {test_name}")
+            print("=" * 60)
+            await test_func()
+            print(f"\n✅ {test_name} completed!")
+            break
+        else:
+            print("❌ Invalid selection. Please choose 1-9 or 'q' to quit.")
 
 
 if __name__ == "__main__":
