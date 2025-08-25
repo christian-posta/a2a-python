@@ -14,10 +14,43 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class NoisySpanFilter(SpanExporter):
+    """Custom span exporter that filters out noisy A2A framework spans."""
+    
+    def __init__(self, base_exporter: SpanExporter):
+        self.base_exporter = base_exporter
+        self.noisy_patterns = [
+            "a2a.server.events.event_queue.EventQueue.dequeue_event",
+            "a2a.server.events.event_queue.EventQueue.enqueue_event",
+            "a2a.server.events.in_memory_queue_manager.InMemoryQueueManager",
+            "a2a.server.request_handlers.default_request_handler.DefaultRequestHandler",
+        ]
+    
+    def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
+        """Export spans, filtering out noisy ones."""
+        filtered_spans = []
+        for span in spans:
+            # Keep spans that don't match noisy patterns
+            if not any(pattern in span.name for pattern in self.noisy_patterns):
+                filtered_spans.append(span)
+        
+        # Only export if we have spans to export
+        if filtered_spans:
+            return self.base_exporter.export(filtered_spans)
+        else:
+            # Return success for empty export
+            return SpanExportResult.SUCCESS
+    
+    def shutdown(self) -> None:
+        """Shutdown the base exporter."""
+        self.base_exporter.shutdown()
 
 class TracingConfig:
     """Configuration and utilities for OpenTelemetry tracing."""
@@ -52,8 +85,10 @@ class TracingConfig:
             # Add span processors
             if enable_console_exporter:
                 console_exporter = ConsoleSpanExporter()
+                # Wrap with filter to remove noisy spans
+                filtered_console_exporter = NoisySpanFilter(console_exporter)
                 self.tracer_provider.add_span_processor(
-                    BatchSpanProcessor(console_exporter)
+                    BatchSpanProcessor(filtered_console_exporter)
                 )
             
             # Add OTLP exporter if configured
@@ -62,8 +97,10 @@ class TracingConfig:
                     endpoint=f"{jaeger_host}:{jaeger_port}",
                     insecure=True,  # Disable SSL for local development
                 )
+                # Wrap with filter to remove noisy spans
+                filtered_otlp_exporter = NoisySpanFilter(otlp_exporter)
                 self.tracer_provider.add_span_processor(
-                    BatchSpanProcessor(otlp_exporter)
+                    BatchSpanProcessor(filtered_otlp_exporter)
                 )
             
             # Set the global tracer provider
@@ -90,8 +127,10 @@ class TracingConfig:
             self.tracer_provider = TracerProvider(resource=resource)
             
             console_exporter = ConsoleSpanExporter()
+            # Wrap with filter to remove noisy spans
+            filtered_console_exporter = NoisySpanFilter(console_exporter)
             self.tracer_provider.add_span_processor(
-                BatchSpanProcessor(console_exporter)
+                BatchSpanProcessor(filtered_console_exporter)
             )
             
             trace.set_tracer_provider(self.tracer_provider)

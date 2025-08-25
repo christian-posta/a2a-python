@@ -18,23 +18,43 @@ try:
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
     from opentelemetry.trace import Status, StatusCode
+    from opentelemetry.sdk.trace import ReadableSpan
+    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
     OTEL_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"OpenTelemetry not available: {e}")
     OTEL_AVAILABLE = False
-    # Create dummy classes for no-op mode
-    class DummySpan:
-        def __enter__(self): return self
-        def __exit__(self, *args): pass
-        def set_attribute(self, *args): pass
-        def add_event(self, *args): pass
-        def set_status(self, *args): pass
-        def record_exception(self, *args): pass
-    class DummyTracer:
-        def start_as_current_span(self, *args, **kwargs): return DummySpan()
-    class DummyTracerProvider:
-        def add_span_processor(self, *args): pass
-        def get_tracer(self, *args): return DummyTracer()
+
+class NoisySpanFilter(SpanExporter):
+    """Custom span exporter that filters out noisy A2A framework spans."""
+    
+    def __init__(self, base_exporter: SpanExporter):
+        self.base_exporter = base_exporter
+        self.noisy_patterns = [
+            "a2a.server.events.event_queue.EventQueue.dequeue_event",
+            "a2a.server.events.event_queue.EventQueue.enqueue_event",
+            "a2a.server.events.in_memory_queue_manager.InMemoryQueueManager",
+            "a2a.server.request_handlers.default_request_handler.DefaultRequestHandler",
+        ]
+    
+    def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
+        """Export spans, filtering out noisy ones."""
+        filtered_spans = []
+        for span in spans:
+            # Keep spans that don't match noisy patterns
+            if not any(pattern in span.name for pattern in self.noisy_patterns):
+                filtered_spans.append(span)
+        
+        # Only export if we have spans to export
+        if filtered_spans:
+            return self.base_exporter.export(filtered_spans)
+        else:
+            # Return success for empty export
+            return SpanExportResult.SUCCESS
+    
+    def shutdown(self) -> None:
+        """Shutdown the base exporter."""
+        self.base_exporter.shutdown()
 
 class TracingConfig:
     """OpenTelemetry tracing configuration for Market Analysis Agent."""
@@ -70,8 +90,10 @@ class TracingConfig:
             # Add console exporter if enabled
             if enable_console_exporter:
                 console_exporter = ConsoleSpanExporter()
+                # Wrap with filter to remove noisy spans
+                filtered_console_exporter = NoisySpanFilter(console_exporter)
                 self.tracer_provider.add_span_processor(
-                    BatchSpanProcessor(console_exporter)
+                    BatchSpanProcessor(filtered_console_exporter)
                 )
             
             # Add OTLP exporter if Jaeger host is provided
@@ -81,8 +103,10 @@ class TracingConfig:
                         endpoint=f"{jaeger_host}:{jaeger_port}",
                         insecure=True,
                     )
+                    # Wrap with filter to remove noisy spans
+                    filtered_otlp_exporter = NoisySpanFilter(otlp_exporter)
                     self.tracer_provider.add_span_processor(
-                        BatchSpanProcessor(otlp_exporter)
+                        BatchSpanProcessor(filtered_otlp_exporter)
                     )
                     logging.info(f"OTLP exporter configured for {jaeger_host}:{jaeger_port}")
                 except Exception as e:
@@ -119,8 +143,10 @@ class TracingConfig:
             self.tracer_provider = TracerProvider(resource=resource)
             
             console_exporter = ConsoleSpanExporter()
+            # Wrap with filter to remove noisy spans
+            filtered_console_exporter = NoisySpanFilter(console_exporter)
             self.tracer_provider.add_span_processor(
-                BatchSpanProcessor(console_exporter)
+                BatchSpanProcessor(filtered_console_exporter)
             )
             
             trace.set_tracer_provider(self.tracer_provider)
