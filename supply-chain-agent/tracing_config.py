@@ -6,14 +6,14 @@ import logging
 from typing import Optional, Dict, Any
 from contextlib import contextmanager
 
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.trace import Span, Status, StatusCode
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,8 +44,10 @@ class TracingConfig:
                 "deployment.environment": os.getenv("ENVIRONMENT", "development")
             })
             
-            # Create tracer provider
-            self.tracer_provider = TracerProvider(resource=resource)
+            # Create tracer provider with simple sampling (no custom sampler for now)
+            self.tracer_provider = TracerProvider(
+                resource=resource
+            )
             
             # Add span processors
             if enable_console_exporter:
@@ -187,7 +189,7 @@ class TracingConfig:
                 raise
     
     def create_span(self, name: str, attributes: Optional[Dict[str, Any]] = None,
-                    parent_context: Optional[trace.SpanContext] = None) -> Span:
+                    parent_context: Optional[trace.SpanContext] = None) -> trace.Span:
         """Create a new span."""
         if not self._initialized:
             self.initialize()
@@ -285,7 +287,7 @@ def get_tracer() -> trace.Tracer:
     return tracing_config.get_tracer()
 
 def create_span(name: str, attributes: Optional[Dict[str, Any]] = None,
-                parent_context: Optional[trace.SpanContext] = None) -> Span:
+                parent_context: Optional[trace.SpanContext] = None) -> trace.Span:
     """Create a span using the global tracing configuration."""
     return tracing_config.create_span(name, attributes, parent_context)
 

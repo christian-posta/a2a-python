@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Test client for the Supply Chain Optimizer Agent."""
+"""Test client for the Supply Chain Optimizer Agent.
+
+Timeout Configuration:
+- Connect: 30 seconds (establish connection)
+- Read: 60 seconds (1 minute for response)
+- Write: 30 seconds (send request)
+- Pool: 30 seconds (connection pool)
+"""
 
 import asyncio
 import json
@@ -44,8 +51,15 @@ def create_tracing_headers(trace_context: Dict[str, str]) -> Dict[str, str]:
 async def test_supply_chain_optimizer():
     """Test the Supply Chain Optimizer Agent."""
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and extended timeout
+    timeout = httpx.Timeout(
+        connect=30.0,      # 30 seconds to establish connection
+        read=60.0,         # 1 minute to read response
+        write=30.0,        # 30 seconds to write request
+        pool=30.0          # 30 seconds for connection pool
+    )
+    
+    async with httpx.AsyncClient(timeout=timeout) as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -286,8 +300,15 @@ async def test_market_analysis_integration():
     print("\n🔍 Testing Market Analysis Integration...")
     print("=" * 60)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and extended timeout
+    timeout = httpx.Timeout(
+        connect=30.0,      # 30 seconds to establish connection
+        read=60.0,         # 1 minute to read response
+        write=30.0,        # 30 seconds to write request
+        pool=30.0          # 30 seconds for connection pool
+    )
+    
+    async with httpx.AsyncClient(timeout=timeout) as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,

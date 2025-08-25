@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Test client for the Market Analysis Agent."""
+"""Test client for the Market Analysis Agent.
+
+Timeout Configuration:
+- Connect: 30 seconds (establish connection)
+- Read: 60 seconds (1 minute for response)
+- Write: 30 seconds (send request)
+- Pool: 30 seconds (connection pool)
+"""
 
 import asyncio
 import json
@@ -20,6 +27,16 @@ from tracing_config import (
 
 # Load environment variables
 load_dotenv()
+
+def create_httpx_client():
+    """Create an httpx client with proper timeout configuration."""
+    timeout = httpx.Timeout(
+        connect=30.0,      # 30 seconds to establish connection
+        read=60.0,         # 1 minute to read response
+        write=30.0,        # 30 seconds to write request
+        pool=30.0          # 30 seconds for connection pool
+    )
+    return httpx.AsyncClient(timeout=timeout)
 
 class TracingInterceptor(ClientCallInterceptor):
     """Interceptor that injects trace context into HTTP requests."""
@@ -120,8 +137,8 @@ async def test_basic_inventory_analysis():
     print("📊 Test: Basic Inventory Demand Analysis")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -163,8 +180,8 @@ async def test_market_trend_forecasting():
     print("📈 Test: Market Trend Forecasting")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -204,8 +221,8 @@ async def test_demand_pattern_modeling():
     print("👥 Test: Demand Pattern Modeling")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -245,8 +262,8 @@ async def test_comprehensive_analysis():
     print("🔍 Test: Comprehensive Market Analysis")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -286,8 +303,8 @@ async def test_tracing_context_propagation():
     print("🔗 Test: Tracing Context Propagation")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         # Create client configuration
         config = ClientConfig(
             httpx_client=httpx_client,
@@ -361,8 +378,8 @@ async def test_agent_capabilities():
     print("🔍 Test: Agent Capabilities")
     print("-" * 40)
     
-    # Create client with proper configuration
-    async with httpx.AsyncClient() as httpx_client:
+    # Create client with proper configuration and timeout
+    async with create_httpx_client() as httpx_client:
         try:
             # Get agent card from the actual server
             from a2a.client import A2ACardResolver

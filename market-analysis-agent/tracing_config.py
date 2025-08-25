@@ -12,11 +12,12 @@ try:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.sdk.trace.sampling import Sampler, SamplingResult, Decision
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    from opentelemetry.trace import Span, Status, StatusCode
     from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    from opentelemetry.trace import Status, StatusCode
     OTEL_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"OpenTelemetry not available: {e}")
@@ -42,7 +43,7 @@ class TracingConfig:
         self._initialized = False
         self.tracer_provider = None
         self.tracer = None
-        self.propagator: Optional[TextMapPropagator] = None
+        self.propagator: Optional[TraceContextTextMapPropagator] = None
         
     def initialize(self, service_name: str = "market-analysis-agent", 
                    jaeger_host: Optional[str] = None, 
@@ -61,8 +62,10 @@ class TracingConfig:
                 "deployment.environment": os.getenv("ENVIRONMENT", "development")
             })
             
-            # Create tracer provider with resource
-            self.tracer_provider = TracerProvider(resource=resource)
+            # Create tracer provider with simple sampling (no custom sampler for now)
+            self.tracer_provider = TracerProvider(
+                resource=resource
+            )
             
             # Add console exporter if enabled
             if enable_console_exporter:
