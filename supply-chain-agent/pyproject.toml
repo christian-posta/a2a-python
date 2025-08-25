@@ -1,7 +1,7 @@
 [project]
-name = "helloworld"
+name = "supply-chain-agent"
 version = "0.1.0"
-description = "HelloWorld agent example that only returns Messages"
+description = "An A2A AI agent that implements supply chain behavior"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
